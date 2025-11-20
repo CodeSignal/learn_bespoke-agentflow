@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Builder</title>
+    <link rel="stylesheet" href="./bespoke.css" />
+    <link rel="stylesheet" href="./workflow-editor.css" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  </head>
+  <body class="bespoke">
+    <header class="header">
+      <div class="header-left">
+        <h1>Agent Builder</h1>
+      </div>
+      <button id="btn-help" class="as-button ghost header-help">Help</button>
+    </header>
+
+    <main class="main-layout">
+      <!-- Center: Canvas -->
+      <div class="content-area" id="canvas-container">
+        <button id="btn-clear" class="canvas-clear">Clear Canvas</button>
+        <div class="palette-floating">
+          <h3>Nodes</h3>
+          <div class="node-palette">
+              <div class="draggable-node" draggable="true" data-type="start"><span class="material-icons">play_circle</span>Start</div>
+              <div class="draggable-node" draggable="true" data-type="agent"><span class="material-icons">smart_toy</span>Agent</div>
+              <div class="draggable-node" draggable="true" data-type="if"><span class="material-icons">call_split</span>If / Else</div>
+              <div class="draggable-node" draggable="true" data-type="input"><span class="material-icons">person</span>Human Input</div>
+              <div class="draggable-node" draggable="true" data-type="end"><span class="material-icons">flag</span>End</div>
+          </div>
+        </div>
+        <div class="canvas-controls">
+          <button id="btn-zoom-out" class="ghost" title="Zoom out"><span class="material-icons">zoom_out</span></button>
+          <button id="btn-zoom-in" class="ghost" title="Zoom in"><span class="material-icons">zoom_in</span></button>
+        </div>
+        <div id="canvas-stage">
+          <!-- SVG Layer for connections -->
+          <svg id="connections-layer">
+              <defs>
+                  <marker id="arrowhead" markerWidth="10" markerHeight="7" 
+                  refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" fill="#999" />
+                  </marker>
+              </defs>
+          </svg>
+          <!-- HTML Layer for nodes -->
+          <div id="nodes-layer"></div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Logs & Prompt -->
+      <div class="panel-resizer" id="right-resizer"></div>
+      <aside class="sidebar-right" id="right-panel">
+          <div class="chat-panel">
+              <div class="chat-header">
+                  <h2>Run Console</h2>
+                  <div class="chat-status" id="chat-status">Idle</div>
+              </div>
+              <div id="chat-messages" class="chat-messages">
+                  <div class="chat-message system">System ready. Build your flow, craft a prompt, then run.</div>
+              </div>
+              <div class="chat-input">
+                  <label for="initial-prompt">Initial Prompt</label>
+                  <textarea id="initial-prompt" rows="4" placeholder="Describe what the workflow should accomplish..."></textarea>
+              </div>
+              <button id="btn-run" class="primary" style="width: 100%; margin-top: 0.75rem;">Run Workflow</button>
+          </div>
+      </aside>
+    </main>
+
+    <!-- Human Input Modal -->
+    <div class="modal" id="input-modal" style="display: none;">
+        <div class="modal-backdrop"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Human Input Required</h2>
+            </div>
+            <div class="modal-body">
+                <p id="input-prompt-text">The workflow requires your input:</p>
+                <textarea id="human-input-value" rows="4" placeholder="Type your response here..."></textarea>
+            </div>
+            <div class="modal-footer" style="padding: 1rem; display: flex; justify-content: flex-end;">
+                <button id="btn-submit-input" class="primary">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./help-modal.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

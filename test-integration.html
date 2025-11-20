@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bespoke CSS Component Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./bespoke.css" />
+
+</head>
+<body>
+  <!-- Bespoke embedded component -->
+  <div class="bespoke">
+    <header class="header">
+      <h1>Component Test Suite</h1>
+      <div class="status">Testing Bespoke CSS Components</div>
+      <button class="as-button ghost">Help</button>
+    </header>
+
+    <main class="main-layout">
+      <!-- Sidebar: Component showcase -->
+      <aside class="sidebar">
+
+        <!-- Form Components Card -->
+        <section class="card">
+          <h2>Form Components</h2>
+
+          <form>
+            <label>Text Input
+              <input type="text" placeholder="Enter text here" />
+            </label>
+
+            <label>Select Dropdown
+              <select>
+                <option>Option 1</option>
+                <option>Option 2</option>
+                <option>Option 3</option>
+              </select>
+            </label>
+
+            <label class="row">
+              <input type="checkbox" />
+              Checkbox Option
+            </label>
+
+            <!-- NEW COMPONENTS TEST (NON TESTED) -->
+            <hr style="margin: var(--bespoke-space-lg) 0; border-color: var(--bespoke-stroke);" />
+            <h3>New Components (NON TESTED)</h3>
+
+            <!-- Radio Buttons Test -->
+            <label>Radio Buttons</label>
+            <div class="radio-group">
+              <label class="row">
+                <input type="radio" name="option" value="a" />
+                Option A
+              </label>
+              <label class="row">
+                <input type="radio" name="option" value="b" />
+                Option B
+              </label>
+              <label class="row">
+                <input type="radio" name="option" value="c" />
+                Option C
+              </label>
+            </div>
+
+            <!-- Horizontal Radio Group Test -->
+            <label>Size (Horizontal)</label>
+            <div class="radio-group horizontal">
+              <label class="row">
+                <input type="radio" name="size" value="small" />
+                Small
+              </label>
+              <label class="row">
+                <input type="radio" name="size" value="medium" />
+                Medium
+              </label>
+              <label class="row">
+                <input type="radio" name="size" value="large" />
+                Large
+              </label>
+            </div>
+
+            <!-- Textarea Test -->
+            <label>Textarea
+              <textarea placeholder="Enter your message here..."></textarea>
+            </label>
+
+            <!-- Toggle Switch Test -->
+            <label class="row">
+              <div class="toggle">
+                <input type="checkbox" class="toggle-input" id="toggle1" />
+                <span class="toggle-slider"></span>
+              </div>
+              <span class="toggle-label">Enable Feature</span>
+            </label>
+
+            <label class="row">
+              <div class="toggle">
+                <input type="checkbox" class="toggle-input" id="toggle2" />
+                <span class="toggle-slider"></span>
+              </div>
+              <span class="toggle-label">Auto Save</span>
+            </label>
+
+            <div class="row">
+              <button type="submit" class="primary">Submit</button>
+              <button type="button" class="danger">Cancel</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Button Variants Card -->
+        <section class="card">
+          <h2>Button Variants</h2>
+
+          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+            <button>Default Button</button>
+            <button class="primary">Primary Button</button>
+            <button class="danger">Danger Button</button>
+            <button class="ghost">Ghost Button</button>
+            <a href="#" class="as-button">Link Button</a>
+            <a href="#" class="as-button ghost">Ghost Link</a>
+          </div>
+        </section>
+
+        <!-- Layout Components Card -->
+        <section class="card">
+          <h2>Layout Components</h2>
+
+          <div class="row">
+            <span>Left</span>
+            <div class="spacer"></div>
+            <span>Right</span>
+          </div>
+
+          <div class="row-between">
+            <span>Left Content</span>
+            <span>Right Content</span>
+          </div>
+
+          <hr />
+
+          <h3>Card Subtitle</h3>
+          <p>This is a paragraph inside a card component.</p>
+        </section>
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="content-area">
+        <div style="background: var(--bespoke-canvas); height: 100%; display: flex; align-items: center; justify-content: center; border: 1px solid var(--bespoke-stroke); border-radius: var(--bespoke-radius-lg);">
+          <div style="text-align: center;">
+            <p style="color: var(--bespoke-muted); font-size: var(--bespoke-font-size-xl); margin: 0 0 var(--bespoke-space-lg) 0;">Main Content Area</p>
+            <p style="color: var(--bespoke-fg); font-size: var(--bespoke-font-size-sm); margin: 0;">This area would contain your main application content</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,24 @@
+{
+  "name": "bespoke-template",
+  "version": "0.0.1",
+  "description": "Bespoke template with local development server and WebSocket messaging",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "bespoke",
+    "template",
+    "development",
+    "server",
+    "websocket"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "openai": "^6.9.1",
+    "ws": "^8.18.3"
+  }
+}

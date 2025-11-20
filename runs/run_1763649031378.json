@@ -1,0 +1,67 @@
+{
+  "runId": "1763649031378",
+  "status": "completed",
+  "logs": [
+    {
+      "timestamp": "2025-11-20T14:30:31.378Z",
+      "nodeId": "system",
+      "type": "info",
+      "content": "Workflow started"
+    },
+    {
+      "timestamp": "2025-11-20T14:30:31.378Z",
+      "nodeId": "node_3",
+      "type": "step_start",
+      "content": "Processing start node"
+    },
+    {
+      "timestamp": "2025-11-20T14:30:31.378Z",
+      "nodeId": "node_1",
+      "type": "step_start",
+      "content": "Processing agent node"
+    },
+    {
+      "timestamp": "2025-11-20T14:30:31.378Z",
+      "nodeId": "node_1",
+      "type": "llm_request",
+      "content": {
+        "model": "gpt-5",
+        "tools": 0
+      }
+    },
+    {
+      "timestamp": "2025-11-20T14:30:37.436Z",
+      "nodeId": "node_1",
+      "type": "llm_response",
+      "content": "Bitcoin is a decentralized digital currency introduced in 2009 by the pseudonymous Satoshi Nakamoto. It enables peer-to-peer transactions without banks, secured by a public blockchain where miners validate blocks using proof-of-work. The supply is capped at 21 million coins, a design that aims to make it scarce and resistant to inflation. Supporters view it as digital gold and a tool for censorship-resistant payments, while critics point to high price volatility, regulatory uncertainty, and the environmental impact of energy-intensive mining. Adoption has grown among individuals, companies, and some institutions, though real-world use varies by region and regulation."
+    },
+    {
+      "timestamp": "2025-11-20T14:30:37.436Z",
+      "nodeId": "node_2",
+      "type": "step_start",
+      "content": "Processing agent node"
+    },
+    {
+      "timestamp": "2025-11-20T14:30:37.436Z",
+      "nodeId": "node_2",
+      "type": "llm_request",
+      "content": {
+        "model": "gpt-5",
+        "tools": 0
+      }
+    },
+    {
+      "timestamp": "2025-11-20T14:30:59.495Z",
+      "nodeId": "node_2",
+      "type": "llm_response",
+      "content": "Bitcoin é uma moeda digital descentralizada introduzida em 2009 por Satoshi Nakamoto, um pseudônimo. Ela permite transações ponto a ponto sem bancos, protegidas por uma blockchain pública na qual mineradores validam blocos por meio de prova de trabalho. A oferta é limitada a 21 milhões de moedas, um modelo que busca torná-la escassa e resistente à inflação. Seus apoiadores a veem como “ouro digital” e uma ferramenta para pagamentos resistentes à censura, enquanto críticos apontam a alta volatilidade de preços, a incerteza regulatória e o impacto ambiental da mineração intensiva em energia. A adoção tem crescido entre indivíduos, empresas e algumas instituições, embora o uso prático varie por região e regulamentação."
+    }
+  ],
+  "state": {
+    "last_output": "Bitcoin é uma moeda digital descentralizada introduzida em 2009 por Satoshi Nakamoto, um pseudônimo. Ela permite transações ponto a ponto sem bancos, protegidas por uma blockchain pública na qual mineradores validam blocos por meio de prova de trabalho. A oferta é limitada a 21 milhões de moedas, um modelo que busca torná-la escassa e resistente à inflação. Seus apoiadores a veem como “ouro digital” e uma ferramenta para pagamentos resistentes à censura, enquanto críticos apontam a alta volatilidade de preços, a incerteza regulatória e o impacto ambiental da mineração intensiva em energia. A adoção tem crescido entre indivíduos, empresas e algumas instituições, embora o uso prático varie por região e regulamentação.",
+    "node_3": "write a brief paragraph about bitcoin",
+    "node_1": "Bitcoin is a decentralized digital currency introduced in 2009 by the pseudonymous Satoshi Nakamoto. It enables peer-to-peer transactions without banks, secured by a public blockchain where miners validate blocks using proof-of-work. The supply is capped at 21 million coins, a design that aims to make it scarce and resistant to inflation. Supporters view it as digital gold and a tool for censorship-resistant payments, while critics point to high price volatility, regulatory uncertainty, and the environmental impact of energy-intensive mining. Adoption has grown among individuals, companies, and some institutions, though real-world use varies by region and regulation.",
+    "node_2": "Bitcoin é uma moeda digital descentralizada introduzida em 2009 por Satoshi Nakamoto, um pseudônimo. Ela permite transações ponto a ponto sem bancos, protegidas por uma blockchain pública na qual mineradores validam blocos por meio de prova de trabalho. A oferta é limitada a 21 milhões de moedas, um modelo que busca torná-la escassa e resistente à inflação. Seus apoiadores a veem como “ouro digital” e uma ferramenta para pagamentos resistentes à censura, enquanto críticos apontam a alta volatilidade de preços, a incerteza regulatória e o impacto ambiental da mineração intensiva em energia. A adoção tem crescido entre indivíduos, empresas e algumas instituições, embora o uso prático varie por região e regulamentação."
+  },
+  "waitingForInput": false
+}

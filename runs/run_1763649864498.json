@@ -1,0 +1,45 @@
+{
+  "runId": "1763649864498",
+  "status": "completed",
+  "logs": [
+    {
+      "timestamp": "2025-11-20T14:44:24.499Z",
+      "nodeId": "system",
+      "type": "info",
+      "content": "Workflow started"
+    },
+    {
+      "timestamp": "2025-11-20T14:44:24.499Z",
+      "nodeId": "node_2",
+      "type": "step_start",
+      "content": "Processing start node"
+    },
+    {
+      "timestamp": "2025-11-20T14:44:24.499Z",
+      "nodeId": "node_1",
+      "type": "step_start",
+      "content": "Processing agent node"
+    },
+    {
+      "timestamp": "2025-11-20T14:44:24.499Z",
+      "nodeId": "node_1",
+      "type": "llm_request",
+      "content": {
+        "model": "gpt-5",
+        "tools": 0
+      }
+    },
+    {
+      "timestamp": "2025-11-20T14:44:26.717Z",
+      "nodeId": "node_1",
+      "type": "llm_response",
+      "content": "Hi! How can I help you today?"
+    }
+  ],
+  "state": {
+    "last_output": "Hi! How can I help you today?",
+    "node_2": "hi",
+    "node_1": "Hi! How can I help you today?"
+  },
+  "waitingForInput": false
+}
