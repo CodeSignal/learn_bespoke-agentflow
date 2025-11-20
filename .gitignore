@@ -1,5 +1,5 @@
 node_modules
 
-/runs
+/data/runs/
 
 .DS_Store

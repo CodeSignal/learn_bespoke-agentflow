@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agentic Workflow Builder</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
+    />
+  </head>
+  <body class="bespoke">
+    <header class="header">
+      <div class="header-left">
+        <h1>Agent Builder</h1>
+      </div>
+      <button id="btn-help" class="as-button ghost header-help">Help</button>
+    </header>
+
+    <main class="main-layout">
+      <div class="content-area" id="canvas-container">
+        <button id="btn-clear" class="canvas-clear">Clear Canvas</button>
+        <div class="palette-floating">
+          <h3>Nodes</h3>
+          <div class="node-palette">
+            <div class="draggable-node" draggable="true" data-type="agent">
+              <span class="material-symbols-outlined">network_intelligence</span>Agent
+            </div>
+            <div class="draggable-node" draggable="true" data-type="if">
+              <span class="material-icons">call_split</span>If / Else
+            </div>
+            <div class="draggable-node" draggable="true" data-type="approval">
+              <span class="material-symbols-outlined">thumbs_up_down</span>User Approval
+            </div>
+            <div class="draggable-node" draggable="true" data-type="end">
+              <span class="material-icons">flag</span>End
+            </div>
+          </div>
+        </div>
+        <div class="canvas-controls">
+          <button id="btn-zoom-out" class="ghost" title="Zoom out">
+            <span class="material-icons">zoom_out</span>
+          </button>
+          <button id="btn-zoom-in" class="ghost" title="Zoom in">
+            <span class="material-icons">zoom_in</span>
+          </button>
+        </div>
+        <div id="canvas-stage">
+          <svg id="connections-layer">
+            <defs>
+              <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                <polygon points="0 0, 10 3.5, 0 7" fill="#999"></polygon>
+              </marker>
+            </defs>
+          </svg>
+          <div id="nodes-layer"></div>
+        </div>
+      </div>
+
+      <div class="panel-resizer" id="right-resizer"></div>
+      <aside class="sidebar-right" id="right-panel">
+        <div class="chat-panel">
+          <div class="chat-header">
+            <h2>Run Console</h2>
+            <div class="chat-status" id="chat-status">Idle</div>
+          </div>
+          <div id="chat-messages" class="chat-messages">
+            <div class="chat-message system">
+              System ready. Build your flow, craft a prompt, then run.
+            </div>
+          </div>
+          <div class="chat-input">
+            <label for="initial-prompt">Initial Prompt</label>
+            <textarea
+              id="initial-prompt"
+              rows="4"
+              placeholder="Describe what the workflow should accomplish..."
+            ></textarea>
+          </div>
+          <button id="btn-run" class="primary" style="width: 100%; margin-top: 0.75rem;">Run Workflow</button>
+        </div>
+      </aside>
+    </main>
+
+    <div class="modal confirm-modal" id="confirm-modal" style="display: none;">
+      <div class="modal-backdrop"></div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2 id="confirm-modal-title">Confirm Action</h2>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-modal-message">Are you sure you want to continue?</p>
+        </div>
+        <div class="modal-footer" style="padding: 1rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
+          <button id="confirm-modal-cancel" class="ghost">Cancel</button>
+          <button id="confirm-modal-confirm" class="primary">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+

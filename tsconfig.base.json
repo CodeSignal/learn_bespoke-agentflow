@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
+    "allowJs": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "baseUrl": ".",
+    "paths": {
+      "@agentic/types": [
+        "./packages/types/src"
+      ],
+      "@agentic/workflow-engine": [
+        "./packages/workflow-engine/src"
+      ]
+    }
+  }
+}
+

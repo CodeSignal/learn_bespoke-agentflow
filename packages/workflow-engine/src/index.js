@@ -1,0 +1,297 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WorkflowEngine = void 0;
+const DEFAULT_REASONING = 'low';
+class MockLLM {
+    async respond(input) {
+        const toolSuffix = input.tools?.web_search ? ' (web search enabled)' : '';
+        return `Mock response for "${input.userContent || 'empty prompt'}" using ${input.model}${toolSuffix}.`;
+    }
+}
+class WorkflowEngine {
+    constructor(graph, options = {}) {
+        this.logs = [];
+        this.state = {};
+        this.status = 'pending';
+        this.currentNodeId = null;
+        this.waitingForInput = false;
+        this.graph = this.normalizeGraph(graph);
+        this.runId = options.runId ?? Date.now().toString();
+        this.llm = options.llm ?? new MockLLM();
+        this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
+        this.onLog = options.onLog;
+    }
+    getRunId() {
+        return this.runId;
+    }
+    getLogs() {
+        return this.logs;
+    }
+    getStatus() {
+        return this.status;
+    }
+    getResult() {
+        return {
+            runId: this.runId,
+            status: this.status,
+            logs: this.logs,
+            state: this.state,
+            waitingForInput: this.waitingForInput,
+            currentNodeId: this.currentNodeId
+        };
+    }
+    async run() {
+        this.status = 'running';
+        const startNode = this.graph.nodes.find((n) => n.type === 'start');
+        if (!startNode) {
+            this.log('system', 'error', 'No start node found in workflow graph');
+            this.status = 'failed';
+            return this.getResult();
+        }
+        this.currentNodeId = startNode.id;
+        await this.processNode(startNode);
+        return this.getResult();
+    }
+    async resume(input) {
+        if (this.status !== 'paused' || !this.currentNodeId) {
+            return this.getResult();
+        }
+        const currentNode = this.graph.nodes.find((n) => n.id === this.currentNodeId);
+        if (!currentNode) {
+            this.status = 'failed';
+            this.log(this.currentNodeId, 'error', 'Unable to resume, current node missing');
+            return this.getResult();
+        }
+        this.waitingForInput = false;
+        this.status = 'running';
+        let connection;
+        if (currentNode.type === 'approval') {
+            const normalized = this.normalizeApprovalInput(input);
+            const logMessage = this.describeApprovalResult(normalized);
+            this.log(currentNode.id, 'input_received', logMessage);
+            this.state[`${currentNode.id}_approval`] = normalized;
+            const restored = this.state.pre_approval_output;
+            if (restored !== undefined) {
+                if (typeof restored === 'string') {
+                    this.state.last_output = restored;
+                }
+                else {
+                    this.state.last_output = JSON.stringify(restored);
+                }
+            }
+            delete this.state.pre_approval_output;
+            connection = this.graph.connections.find((c) => c.source === currentNode.id && c.sourceHandle === normalized.decision);
+        }
+        else {
+            this.log(currentNode.id, 'input_received', JSON.stringify(input));
+            this.state.last_output = input ?? '';
+            connection = this.graph.connections.find((c) => c.source === currentNode.id);
+        }
+        if (connection) {
+            const nextNode = this.graph.nodes.find((n) => n.id === connection.target);
+            if (nextNode) {
+                await this.processNode(nextNode);
+            }
+            else {
+                this.status = 'completed';
+            }
+        }
+        else {
+            this.status = 'completed';
+        }
+        return this.getResult();
+    }
+    normalizeGraph(graph) {
+        const nodes = Array.isArray(graph.nodes)
+            ? graph.nodes.map((node) => {
+                if (node.type === 'input') {
+                    return { ...node, type: 'approval' };
+                }
+                return node;
+            })
+            : [];
+        return {
+            nodes,
+            connections: Array.isArray(graph.connections) ? graph.connections : []
+        };
+    }
+    log(nodeId, type, content) {
+        const entry = {
+            timestamp: this.timestampFn(),
+            nodeId: nodeId ?? 'system',
+            type,
+            content
+        };
+        this.logs.push(entry);
+        if (this.onLog) {
+            this.onLog(entry);
+        }
+    }
+    async processNode(node) {
+        this.currentNodeId = node.id;
+        this.log(node.id, 'step_start', this.describeNode(node));
+        try {
+            let output = null;
+            switch (node.type) {
+                case 'start':
+                    output = node.data?.initialInput || '';
+                    break;
+                case 'agent':
+                    output = await this.executeAgentNode(node);
+                    break;
+                case 'if': {
+                    const nextNodeId = this.evaluateIfNode(node);
+                    if (nextNodeId) {
+                        const nextNode = this.graph.nodes.find((n) => n.id === nextNodeId);
+                        if (nextNode) {
+                            await this.processNode(nextNode);
+                            return;
+                        }
+                    }
+                    break;
+                }
+                case 'approval':
+                    this.state.pre_approval_output = this.state.last_output;
+                    this.status = 'paused';
+                    this.waitingForInput = true;
+                    this.log(node.id, 'wait_input', 'Waiting for user approval');
+                    return;
+                case 'end':
+                    this.status = 'completed';
+                    return;
+                default:
+                    this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
+            }
+            this.state.last_output = output;
+            this.state[node.id] = output;
+            const nextConnection = this.graph.connections.find((c) => c.source === node.id);
+            if (nextConnection) {
+                const nextNode = this.graph.nodes.find((n) => n.id === nextConnection.target);
+                if (nextNode) {
+                    await this.processNode(nextNode);
+                }
+                else {
+                    this.status = 'completed';
+                }
+            }
+            else if (node.type !== 'end') {
+                this.status = 'completed';
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(node.id, 'error', message);
+            this.status = 'failed';
+        }
+    }
+    describeNode(node) {
+        if (node.type === 'agent') {
+            const name = node.data?.agentName || 'Agent';
+            return `${name} agent node`;
+        }
+        switch (node.type) {
+            case 'start':
+                return 'start node';
+            case 'if':
+                return 'if/else node';
+            case 'approval':
+                return 'approval node';
+            case 'end':
+                return 'end node';
+            default:
+                return `${node.type} node`;
+        }
+    }
+    evaluateIfNode(node) {
+        const condition = node.data?.condition || '';
+        const input = JSON.stringify(this.state.last_output || '');
+        const match = input.toLowerCase().includes(condition.toLowerCase());
+        this.log(node.id, 'logic_check', `Condition "${condition}" evaluated as ${match ? 'true' : 'false'}`);
+        const trueConn = this.graph.connections.find((c) => c.source === node.id && c.sourceHandle === 'true');
+        const falseConn = this.graph.connections.find((c) => c.source === node.id && c.sourceHandle === 'false');
+        if (match && trueConn)
+            return trueConn.target;
+        if (!match && falseConn)
+            return falseConn.target;
+        return null;
+    }
+    async executeAgentNode(node) {
+        const previousOutput = this.state.last_output;
+        let userContent = '';
+        if (node.data?.userPrompt && typeof node.data.userPrompt === 'string' && node.data.userPrompt.trim()) {
+            userContent = node.data.userPrompt;
+        }
+        else if (typeof previousOutput === 'string') {
+            userContent = previousOutput;
+        }
+        else if (previousOutput !== undefined && previousOutput !== null) {
+            userContent = JSON.stringify(previousOutput);
+        }
+        if (previousOutput &&
+            typeof previousOutput === 'object' &&
+            ('decision' in previousOutput ||
+                'note' in previousOutput)) {
+            const safe = this.findLastNonApprovalOutput();
+            userContent = safe || '';
+        }
+        const invocation = {
+            systemPrompt: node.data?.systemPrompt || 'You are a helpful assistant.',
+            userContent,
+            model: node.data?.model || 'gpt-5',
+            reasoningEffort: node.data?.reasoningEffort || DEFAULT_REASONING,
+            tools: node.data?.tools
+        };
+        this.log(node.id, 'start_prompt', invocation.userContent || '');
+        try {
+            const responseText = await this.llm.respond(invocation);
+            this.log(node.id, 'llm_response', responseText);
+            return responseText;
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            this.log(node.id, 'llm_error', message);
+            return `LLM error: ${message}`;
+        }
+    }
+    findLastNonApprovalOutput() {
+        const entries = Object.entries(this.state);
+        for (let i = entries.length - 1; i >= 0; i -= 1) {
+            const [key, value] = entries[i];
+            if (key.includes('_approval') || key === 'last_output' || key === 'pre_approval_output') {
+                continue;
+            }
+            if (typeof value === 'string') {
+                return value;
+            }
+        }
+        return null;
+    }
+    normalizeApprovalInput(input) {
+        if (typeof input === 'string') {
+            return {
+                decision: input.toLowerCase().includes('reject') ? 'reject' : 'approve',
+                note: ''
+            };
+        }
+        if (input && typeof input === 'object') {
+            const decision = input.decision === 'reject' ||
+                (typeof input.decision === 'string' && input.decision.toLowerCase() === 'reject')
+                ? 'reject'
+                : 'approve';
+            return {
+                decision,
+                note: typeof input.note === 'string' ? input.note : ''
+            };
+        }
+        return { decision: 'approve', note: '' };
+    }
+    describeApprovalResult(result) {
+        const base = result.decision === 'approve' ? 'User approved this step.' : 'User rejected this step.';
+        if (result.note && result.note.trim()) {
+            return `${base} Feedback: ${result.note.trim()}`;
+        }
+        return base;
+    }
+}
+exports.WorkflowEngine = WorkflowEngine;
+exports.default = WorkflowEngine;

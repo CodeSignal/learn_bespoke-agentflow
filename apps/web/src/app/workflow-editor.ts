@@ -1,4 +1,8 @@
+// @ts-nocheck
 // Bespoke Agent Builder - Client Logic
+
+import type { WorkflowGraph } from '@agentic/types';
+import { runWorkflow, resumeWorkflow } from '../services/api';
 
 const COLLAPSED_NODE_WIDTH = 240;
 const EXPANDED_NODE_WIDTH = 420;
@@ -9,7 +13,7 @@ const MODEL_EFFORTS = {
     'gpt-5.1': ['none', 'low', 'medium', 'high']
 };
 
-class WorkflowEditor {
+export class WorkflowEditor {
     constructor() {
         this.nodes = [];
         this.connections = [];
@@ -1140,13 +1144,7 @@ class WorkflowEditor {
         };
 
         try {
-            const res = await fetch('/api/run', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ graph })
-            });
-            
-            const result = await res.json();
+            const result = await runWorkflow(graph);
             this.handleRunResult(result);
 
         } catch (e) {
@@ -1191,15 +1189,7 @@ class WorkflowEditor {
         this.showAgentSpinner();
         
         try {
-            const res = await fetch('/api/resume', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    runId: this.currentRunId,
-                    input: { decision, note }
-                })
-            });
-            const result = await res.json();
+            const result = await resumeWorkflow(this.currentRunId, { decision, note });
             this.handleRunResult(result);
         } catch (e) {
             this.appendChatMessage(e.message, 'error');
@@ -1209,6 +1199,4 @@ class WorkflowEditor {
     }
 }
 
-window.addEventListener('DOMContentLoaded', () => {
-    window.editor = new WorkflowEditor();
-});
+export default WorkflowEditor;

@@ -1,24 +1,35 @@
 {
-  "name": "bespoke-template",
-  "version": "0.0.1",
-  "description": "Bespoke template with local development server and WebSocket messaging",
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
-  },
-  "keywords": [
-    "bespoke",
-    "template",
-    "development",
-    "server",
-    "websocket"
-  ],
-  "author": "",
+  "name": "learn_agentic-workflows",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Agentic Workflow Builder monorepo (web + server + shared packages)",
   "license": "MIT",
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "openai": "^6.9.1",
-    "ws": "^8.18.3"
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm --workspace apps/server run dev",
+    "dev:server": "npm --workspace apps/server run dev",
+    "dev:web": "npm --workspace apps/web run dev",
+    "build": "npm run build:server && npm run build:web",
+    "build:packages": "npm --workspace packages/types run build && npm --workspace packages/workflow-engine run build",
+    "build:server": "npm run build:packages && npm --workspace apps/server run build",
+    "build:web": "npm --workspace apps/web run build",
+    "test": "npm run test:engine && npm run test:server",
+    "test:engine": "npm --workspace packages/workflow-engine run test",
+    "test:server": "npm --workspace apps/server run test",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "npm run typecheck:server && npm run typecheck:web",
+    "typecheck:server": "npm --workspace apps/server run typecheck",
+    "typecheck:web": "npm --workspace apps/web run typecheck"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.14.0",
+    "@typescript-eslint/parser": "^8.14.0",
+    "concurrently": "^9.1.0",
+    "eslint": "^9.14.0",
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.2"
   }
 }
