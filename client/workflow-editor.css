@@ -210,12 +210,39 @@
     pointer-events: none;
 }
 
+.bespoke #connections-layer path.connection-line.editable {
+    pointer-events: stroke;
+}
+
 .bespoke path.connection-line {
     fill: none;
     stroke: var(--bespoke-control-border);
     stroke-width: 2px;
     transition: stroke 0.2s;
-    marker-end: url(#arrowhead); /* Add arrow marker */
+    marker-end: url(#arrowhead);
+    pointer-events: none;
+}
+
+.bespoke path.connection-line.editable {
+    pointer-events: stroke;
+    cursor: grab;
+    stroke-width: 3px; /* Thicker for easier clicking */
+}
+
+.bespoke path.connection-line.editable:hover {
+    stroke: var(--bespoke-accent);
+    stroke-width: 4px;
+}
+
+.bespoke path.connection-line.editable:active {
+    cursor: grabbing;
+}
+
+.bespoke path.connection-line.reconnecting {
+    stroke: var(--bespoke-accent);
+    stroke-width: 3px;
+    stroke-dasharray: 5,5;
+    pointer-events: none;
 }
 
 .bespoke path.connection-line.active {

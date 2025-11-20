@@ -25,6 +25,7 @@ class WorkflowEditor {
         // Connection state
         this.tempConnection = null;
         this.connectionStart = null;
+        this.reconnectingConnection = null; // Store the original connection data when reconnecting
 
         // DOM Elements
         this.canvas = document.getElementById('canvas-container');
@@ -245,7 +246,7 @@ class WorkflowEditor {
             }
         });
 
-        document.addEventListener('mouseup', () => {
+        document.addEventListener('mouseup', (e) => {
             if (this.isPanning) {
                 this.isPanning = false;
                 if (this.canvas) {
@@ -253,7 +254,24 @@ class WorkflowEditor {
                 }
             }
             this.isDragging = false;
-            if (this.tempConnection) {
+            
+            // Handle reconnection cleanup if released without connecting to a port
+            if (this.tempConnection && this.reconnectingConnection !== null) {
+                // Check if we're over a port - if not, connection already deleted, just clean up
+                const targetPort = e.target.closest('.port');
+                if (!targetPort) {
+                    // Connection was already removed when we started reconnecting, just render
+                    this.renderConnections();
+                }
+                // Clean up will happen in onPortMouseUp if we connected, or here if we didn't
+                if (!targetPort) {
+                    this.reconnectingConnection = null;
+                    this.tempConnection.remove();
+                    this.tempConnection = null;
+                    this.connectionStart = null;
+                }
+            } else if (this.tempConnection && !this.reconnectingConnection) {
+                // Normal connection creation cancelled
                 this.tempConnection.remove();
                 this.tempConnection = null;
                 this.connectionStart = null;
@@ -816,17 +834,75 @@ class WorkflowEditor {
     onPortMouseUp(e, nodeId, handle) {
         e.stopPropagation();
         if (this.connectionStart && this.connectionStart.nodeId !== nodeId) {
-            this.connections.push({
-                source: this.connectionStart.nodeId,
-                target: nodeId,
-                sourceHandle: this.connectionStart.handle,
-                targetHandle: handle
-            });
+            // If we're reconnecting an existing connection, create new connection with updated target
+            if (this.reconnectingConnection !== null) {
+                // Connection was already removed from array, just create new one
+                this.connections.push({
+                    source: this.connectionStart.nodeId,
+                    target: nodeId,
+                    sourceHandle: this.connectionStart.handle,
+                    targetHandle: handle
+                });
+                this.reconnectingConnection = null;
+            } else {
+                // Creating a new connection
+                this.connections.push({
+                    source: this.connectionStart.nodeId,
+                    target: nodeId,
+                    sourceHandle: this.connectionStart.handle,
+                    targetHandle: handle
+                });
+            }
+            this.renderConnections();
+            if(this.tempConnection) this.tempConnection.remove();
+            this.connectionStart = null;
+            this.tempConnection = null;
+        } else if (this.reconnectingConnection !== null) {
+            // Released without connecting to anything - connection already deleted, just clean up
+            this.reconnectingConnection = null;
             this.renderConnections();
             if(this.tempConnection) this.tempConnection.remove();
             this.connectionStart = null;
             this.tempConnection = null;
         }
+    }
+
+    onConnectionLineMouseDown(e, connection, connIndex) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!this.connectionsLayer) return;
+        
+        // Track that we're reconnecting this connection
+        this.reconnectingConnection = connIndex;
+        
+        const sourceNode = this.nodes.find(n => n.id === connection.source);
+        if (!sourceNode) return;
+        
+        let startYOffset = 24;
+        if (connection.sourceHandle === 'true' || connection.sourceHandle === 'approve') startYOffset = 51;
+        if (connection.sourceHandle === 'false' || connection.sourceHandle === 'reject') startYOffset = 81;
+        if (connection.sourceHandle === 'output' && sourceNode.type === 'agent') startYOffset = 24;
+        
+        const startX = sourceNode.x + this.getNodeWidth(sourceNode);
+        const startY = sourceNode.y + startYOffset;
+        const world = this.screenToWorld(e.clientX, e.clientY);
+        
+        this.connectionStart = { 
+            nodeId: connection.source, 
+            handle: connection.sourceHandle, 
+            x: startX, 
+            y: startY 
+        };
+        
+        // Remove the original connection temporarily
+        this.connections.splice(connIndex, 1);
+        this.renderConnections();
+        
+        // Create temp connection for dragging
+        this.tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        this.tempConnection.setAttribute('class', 'connection-line reconnecting');
+        this.tempConnection.setAttribute('d', this.getPathD(startX, startY, world.x, world.y));
+        this.connectionsLayer.appendChild(this.tempConnection);
     }
 
     renderConnections() {
@@ -837,7 +913,7 @@ class WorkflowEditor {
             if (line !== this.tempConnection) line.remove();
         });
 
-        this.connections.forEach(conn => {
+        this.connections.forEach((conn, index) => {
             const sourceNode = this.nodes.find(n => n.id === conn.source);
             const targetNode = this.nodes.find(n => n.id === conn.target);
             if (!sourceNode || !targetNode) return;
@@ -854,8 +930,13 @@ class WorkflowEditor {
             const endY = targetNode.y + 24; // Input port offset
 
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('class', 'connection-line');
+            path.setAttribute('class', 'connection-line editable');
             path.setAttribute('d', this.getPathD(startX, startY, endX, endY));
+            path.dataset.connectionIndex = index;
+            path.dataset.sourceNodeId = conn.source;
+            path.dataset.sourceHandle = conn.sourceHandle;
+            path.dataset.targetNodeId = conn.target;
+            path.addEventListener('mousedown', (e) => this.onConnectionLineMouseDown(e, conn, index));
             this.connectionsLayer.appendChild(path);
         });
     }
