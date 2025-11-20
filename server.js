@@ -205,31 +205,71 @@ class WorkflowEngine {
       tools.push({ type: 'web_search' });
     }
 
+    const responseInput = [
+        {
+            role: 'system',
+            content: [
+                {
+                    type: 'input_text',
+                    text: node.data.systemPrompt || 'You are a helpful assistant.'
+                }
+            ]
+        },
+        {
+            role: 'user',
+            content: [
+                {
+                    type: 'input_text',
+                    text: userContent || ''
+                }
+            ]
+        }
+    ];
+
     const params = {
         model: node.data.model || 'gpt-5',
-        messages
+        input: responseInput
     };
 
-    if (node.data.reasoningEffort && params.model.startsWith('gpt-5')) {
-        params.reasoning_effort = node.data.reasoningEffort;
+    if (node.data.reasoningEffort) {
+        params.reasoning = { effort: node.data.reasoningEffort };
     }
 
     if (tools.length > 0) {
         params.tools = tools;
+        params.tool_choice = 'auto';
     }
 
-    // MOCKING FOR DEMO if no key provided or strict "openai" package limits
-    // In a real scenario, we call openai.chat.completions.create(params)
-    let responseText = "";
+    // Responses API handles built-in tools like web_search
+    let responseText = '';
     
     try {
         if (!process.env.OPENAI_API_KEY) throw new Error("No API Key");
-        const completion = await openai.chat.completions.create(params);
-        responseText = completion.choices[0].message.content;
+        const response = await openai.responses.create(params);
+        
+        if (Array.isArray(response.output_text) && response.output_text.length > 0) {
+            responseText = response.output_text.join('\n').trim();
+        } else if (Array.isArray(response.output) && response.output.length > 0) {
+            const chunks = [];
+            response.output.forEach(item => {
+                if (item.type === 'message' && Array.isArray(item.content)) {
+                    item.content.forEach(part => {
+                        if (part.type === 'output_text' && part.text) {
+                            chunks.push(part.text);
+                        }
+                    });
+                }
+            });
+            responseText = chunks.join('\n').trim();
+        }
+
+        if (!responseText) {
+            responseText = 'The model did not return any text output.';
+        }
     } catch (e) {
-        this.log(node.id, 'llm_mock', 'API Call failed or mocked. Returning dummy response.');
-        responseText = `[Simulated AI Response] I processed the input: "${messages[1].content}". (Enable real API key for actual results)`;
-        if (node.data.enableWebSearch) responseText += " [Used Web Search]";
+        const errorMsg = e?.message || 'Unknown error';
+        this.log(node.id, 'llm_error', `API call failed: ${errorMsg}`);
+        responseText = `OpenAI error: ${errorMsg}`;
     }
 
     this.log(node.id, 'llm_response', responseText);

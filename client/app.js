@@ -4,8 +4,8 @@ const COLLAPSED_NODE_WIDTH = 240;
 const EXPANDED_NODE_WIDTH = 420;
 const MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
 const MODEL_EFFORTS = {
-    'gpt-5': ['minimal', 'low', 'medium', 'high'],
-    'gpt-5-mini': ['minimal', 'low', 'medium', 'high'],
+    'gpt-5': ['low', 'medium', 'high'],
+    'gpt-5-mini': ['low', 'medium', 'high'],
     'gpt-5.1': ['none', 'low', 'medium', 'high']
 };
 
@@ -459,7 +459,7 @@ class WorkflowEditor {
                     systemPrompt: 'You are a helpful assistant.', 
                     userPrompt: '',
                     model: 'gpt-5', 
-                    reasoningEffort: 'minimal',
+                    reasoningEffort: 'low',
                     tools: { web_search: false },
                     collapsed: true
                 };
