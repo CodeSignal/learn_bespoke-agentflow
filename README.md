@@ -1,19 +1,26 @@
 # Agentic Workflow Builder
 
-A Bespoke-styled web application for visually composing, running, and auditing agentic LLM workflows. Users drag nodes (Start, Agent, If/Else, Approval, End) onto a canvas, wire them together, configure prompts inline, and run the flow against a server-side workflow engine that persists detailed execution logs.
+Agentic Workflow Builder is a web app for visually composing, executing, and auditing LLM workflows. Drag Start, Agent, If/Else, Approval, and End nodes onto the canvas, connect them with Bezier edges, configure prompts inline, and run the flow through a server-side engine that records every step for later review.
 
-## Monorepo Layout
+## Repository Layout
 
 ```
 apps/
-  server/                # Express server + API surface
-  web/                   # Vite-powered UI (TypeScript + Bespoke CSS)
+  server/            # Express + Vite middleware; REST API + static delivery
+  web/               # Vite UI (TypeScript + Bespoke CSS)
 packages/
-  types/                 # Shared TypeScript contracts for nodes, graphs, run logs
-  workflow-engine/       # Reusable workflow executor used by the server
+  types/             # Shared TypeScript contracts (nodes, graphs, run logs)
+  workflow-engine/   # Reusable workflow executor w/ pluggable LLM interface
 data/
-  runs/                  # JSON transcripts of every workflow execution
+  runs/              # JSON snapshots of each workflow execution
 ```
+
+## Key Features
+
+- **Visual Editor** – Canvas, floating palette, zoom controls, and inline node forms for prompts, branching rules, and approval copy.
+- **Run Console** – Chat-style stream that differentiates user prompts, agent turns, spinner states, and approval requests.
+- **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Responses API or mock).
+- **Persistent Audit Trail** – Every run writes `data/runs/run_<timestamp>.json` containing the workflow graph plus raw execution logs, independent of what the UI chooses to display.
 
 ## Getting Started
 
@@ -21,47 +28,55 @@ data/
    ```bash
    npm install
    ```
-2. (Optional) add `.env` with `OPENAI_API_KEY=sk-...` to enable live OpenAI calls. Without a key the engine falls back to deterministic mock responses.
-3. Start the integrated dev server (API + Vite middleware served from the same origin):
+2. (Optional) create `.env` with `OPENAI_API_KEY=sk-...`. Without it the engine falls back to deterministic mock responses.
+3. Start the integrated dev server (Express + embedded Vite middleware on one port):
    ```bash
    npm run dev
    ```
-   - Visit `http://localhost:3000` for the UI (the API lives under `/api` on the same port).
-4. Build for production:
+   Open `http://localhost:3000` for the UI; APIs live under `/api`.
+4. Production build:
    ```bash
    npm run build
    ```
-5. Launch individual pieces if needed:
-   ```bash
-   npm run dev:server   # API + embedded Vite dev server
-   npm run dev:web      # Standalone Vite dev server on 5173 (advanced use only)
-   ```
 
-## Available Scripts
+### Script Reference
 
-- `npm run dev` – concurrently run the Express API (`apps/server`) and Vite UI (`apps/web`).
-- `npm run build` – compile shared packages, the server, and the web bundle.
-- `npm run build:server` / `npm run build:web` – targeted builds.
-- `npm run typecheck` – run TypeScript in both apps.
-- `npm run test:engine` – workflow engine test harness (placeholders for future suites).
-- `npm run lint` – ESLint across the repo.
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Express server with Vite middleware (single origin on port 3000). |
+| `npm run dev:server` | Same as `dev`; useful if you only need the backend. |
+| `npm run dev:web` | Standalone Vite dev server on 5173 (talks to `/api` proxy). |
+| `npm run build` | Build shared packages, server, and web bundle. |
+| `npm run build:packages` | Rebuild `packages/types` and `packages/workflow-engine`. |
+| `npm run build:server` / `npm run build:web` | Targeted builds. |
+| `npm run lint` | ESLint via the repo-level config. |
+| `npm run typecheck` | TypeScript in both apps. |
 
-## Architecture Highlights
+## Architecture Notes
 
-- **`@agentic/workflow-engine`** encapsulates graph traversal, branching, approval pauses, and the LLM invocation abstraction. It accepts any `WorkflowLLM` implementation (OpenAI-powered or mock) and produces normalized logs/results for persistence.
-- **`apps/server`** exposes `/api/run` and `/api/resume`, hydrates `WorkflowEngine` instances, streams logs to disk under `data/runs/`, and serves the built UI bundle for production deployments.
-- **`apps/web`** is a Vite + TypeScript single-page app that reuses Bespoke CSS assets. The editor logic remains modularized in `src/app/workflow-editor.ts`, while API clients, Help modal, and content live in their own modules.
-- **Shared types** live in `packages/types`, keeping contracts for nodes, connections, logs, and run payloads in sync between client and server.
+- **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
+- **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, fallback to mock LLMs when no OpenAI key is present, and persist run records through `saveRunRecord()` into `data/runs/`.
+- **Web (`apps/web`)**: Vite SPA using Bespoke CSS. The legacy workflow editor logic lives in `src/app/workflow-editor.ts` while ancillary modules (help modal, API client, etc.) live under `src/`.
+- **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
 
-## Data & Logging
+## Run Records
 
-- Each workflow execution writes `data/runs/run_<timestamp>.json`, containing:
-  - workflow graph snapshot
-  - node-by-node logs (start, llm_response, wait_input, etc.)
-  - engine state (last output, approval decisions, etc.)
-- These JSON artifacts are ideal for grading, debugging, or replaying runs later.
+Every successful or paused execution produces:
+
+```json
+{
+  "runId": "1763679127679",
+  "workflow": { "nodes": [...], "connections": [...] },
+  "logs": [
+    { "timestamp": "...", "nodeId": "node_agent", "type": "llm_response", "content": "..." }
+  ],
+  "status": "completed"
+}
+```
+
+Files live in `data/runs/` and can be used for grading, replay, or export pipelines. These are intentionally more detailed than the UI console (which may apply formatting or filtering).
 
 ## License
 
-MIT
+This repository ships under the **Elastic License 2.0** (see `LICENSE`). You must comply with its terms—MIT references elsewhere were outdated and have been corrected.
 

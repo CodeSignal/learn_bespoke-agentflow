@@ -1,5 +1,27 @@
+# Dependencies
 node_modules
 
-/data/runs/
+# Build outputs
+dist
+apps/*/dist
+packages/*/dist
 
+# TypeScript
+*.tsbuildinfo
+
+# Runtime artifacts
+data/runs/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# OS
 .DS_Store
