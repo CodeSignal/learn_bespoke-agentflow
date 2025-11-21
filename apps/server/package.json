@@ -5,8 +5,9 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch --ignore ../web --ignore ../../apps/web --ignore ../../data src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "build": "tsc -b tsconfig.json",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "start": "NODE_ENV=production node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run typecheck"
   },
