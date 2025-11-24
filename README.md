@@ -7,7 +7,7 @@ Agentic Workflow Builder is a web app for visually composing, executing, and aud
 ```
 apps/
   server/            # Express + Vite middleware; REST API + static delivery
-  web/               # Vite UI (TypeScript + Bespoke CSS)
+  web/               # Vite UI (TypeScript + CodeSignal design system)
 packages/
   types/             # Shared TypeScript contracts (nodes, graphs, run logs)
   workflow-engine/   # Reusable workflow executor w/ pluggable LLM interface
@@ -56,8 +56,15 @@ data/
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
 - **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, fallback to mock LLMs when no OpenAI key is present, and persist run records through `saveRunRecord()` into `data/runs/`.
-- **Web (`apps/web`)**: Vite SPA using Bespoke CSS. The legacy workflow editor logic lives in `src/app/workflow-editor.ts` while ancillary modules (help modal, API client, etc.) live under `src/`.
+- **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
+
+## Design System Usage (web)
+
+- The CodeSignal design system lives as a git submodule at `design-system/` and is served statically at `/design-system/*` via the `apps/web/public/design-system` symlink.
+- Foundations and components are linked in `apps/web/index.html` (colors, spacing, typography, buttons, icons, inputs, dropdowns).
+- Dropdowns in the editor use the design-system JS component, dynamically imported from `/design-system/components/dropdown/dropdown.js`.
+- All bespoke CSS has been removed; remaining styling in `apps/web/src/workflow-editor.css` uses design-system tokens and classes.
 
 ## Run Records
 
@@ -79,4 +86,3 @@ Files live in `data/runs/` and can be used for grading, replay, or export pipeli
 ## License
 
 This repository ships under the **Elastic License 2.0** (see `LICENSE`). You must comply with its terms—MIT references elsewhere were outdated and have been corrected.
-

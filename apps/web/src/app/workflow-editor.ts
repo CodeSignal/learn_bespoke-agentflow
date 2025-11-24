@@ -66,6 +66,29 @@ export class WorkflowEditor {
         this.setRunState(false);
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
+
+        this.dropdownCtorPromise = null;
+    }
+
+    async getDropdownCtor() {
+        if (!this.dropdownCtorPromise) {
+            const origin = window.location.origin;
+            const dropdownModulePath = `${origin}/design-system/components/dropdown/dropdown.js`;
+            this.dropdownCtorPromise = import(/* @vite-ignore */ dropdownModulePath).then((mod) => mod.default);
+        }
+        return this.dropdownCtorPromise;
+    }
+
+    async setupDropdown(container, items, selectedValue, placeholder, onSelect) {
+        const DropdownCtor = await this.getDropdownCtor();
+        const dropdown = new DropdownCtor(container, {
+            placeholder,
+            items,
+            selectedValue,
+            width: '100%',
+            onSelect
+        });
+        return dropdown;
     }
 
     applyViewport() {
@@ -150,6 +173,7 @@ export class WorkflowEditor {
 
     renderEffortSelect(node) {
         const select = document.createElement('select');
+        select.className = 'input ds-select';
         const options = MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5'];
         if (!options.includes(node.data.reasoningEffort)) {
             node.data.reasoningEffort = options[0];
@@ -501,7 +525,7 @@ export class WorkflowEditor {
 
     renderNode(node) {
         const el = document.createElement('div');
-        el.className = `node ${node.type === 'start' ? 'start-node' : ''}`;
+        el.className = `node box card shadowed ${node.type === 'start' ? 'start-node' : ''}`;
         el.id = node.id;
         el.style.left = `${node.x}px`;
         el.style.top = `${node.y}px`;
@@ -531,8 +555,9 @@ export class WorkflowEditor {
         let updateCollapseIcon = () => {};
         if (hasSettings) {
             collapseBtn = document.createElement('button');
-            collapseBtn.className = 'icon-btn collapse';
-            collapseBtn.innerHTML = '<span class="material-icons">tune</span>';
+            collapseBtn.type = 'button';
+            collapseBtn.className = 'button button-tertiary button-small icon-btn collapse';
+            collapseBtn.innerHTML = '<span class="icon icon-data-engineering icon-primary"></span>';
             updateCollapseIcon = () => {
                 collapseBtn.title = node.data.collapsed ? 'Open settings' : 'Close settings';
                 el.classList.toggle('expanded', !node.data.collapsed);
@@ -550,8 +575,9 @@ export class WorkflowEditor {
         let delBtn = null;
         if (node.type !== 'start') {
             delBtn = document.createElement('button');
-            delBtn.className = 'icon-btn delete';
-            delBtn.innerHTML = '<span class="material-icons">delete</span>';
+            delBtn.type = 'button';
+            delBtn.className = 'button button-tertiary button-small icon-btn delete';
+            delBtn.innerHTML = '<span class="icon icon-theme-light-state-open icon-danger"></span>';
             delBtn.title = 'Delete Node';
             delBtn.addEventListener('mousedown', async (e) => {
                  e.stopPropagation(); 
@@ -631,13 +657,13 @@ export class WorkflowEditor {
     getNodeLabel(node) {
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim() || 'Agent';
-            return `<span class="material-symbols-outlined">network_intelligence</span>${name}`;
+            return `<span class="icon icon-ai-and-machine-learning icon-primary"></span>${name}`;
         }
-        if (node.type === 'start') return '<span class="material-icons">play_circle</span>Start';
-        if (node.type === 'end') return '<span class="material-icons">flag</span>End';
-        if (node.type === 'if') return '<span class="material-icons">call_split</span>If/Else';
-        if (node.type === 'approval') return '<span class="material-symbols-outlined">thumbs_up_down</span>User Approval';
-        return node.type;
+        if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
+        if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
+        if (node.type === 'if') return '<span class="icon icon-path icon-primary"></span>If/Else';
+        if (node.type === 'approval') return '<span class="icon icon-chermark-badge icon-primary"></span>User Approval';
+        return `<span class="icon icon-primary"></span>${node.type}`;
     }
 
     getNodePreviewText(node) {
@@ -668,6 +694,7 @@ export class WorkflowEditor {
             container.appendChild(buildLabel('Agent Name'));
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
+            nameInput.className = 'input';
             nameInput.value = node.data.agentName || 'Agent';
             nameInput.placeholder = 'e.g., Research Agent';
             nameInput.addEventListener('input', (e) => {
@@ -680,6 +707,7 @@ export class WorkflowEditor {
             // System Prompt
             container.appendChild(buildLabel('System Prompt'));
             const sysInput = document.createElement('textarea');
+            sysInput.className = 'input textarea-input';
             sysInput.value = node.data.systemPrompt || '';
             sysInput.addEventListener('input', (e) => {
                 node.data.systemPrompt = e.target.value;
@@ -690,6 +718,7 @@ export class WorkflowEditor {
             // User Prompt Override
             container.appendChild(buildLabel('User Prompt Override (optional)'));
             const userInput = document.createElement('textarea');
+            userInput.className = 'input textarea-input';
             userInput.placeholder = 'If left empty, uses previous node output.';
             userInput.value = node.data.userPrompt || '';
             userInput.addEventListener('input', (e) => {
@@ -699,24 +728,41 @@ export class WorkflowEditor {
 
             // Model
             container.appendChild(buildLabel('Model'));
-            const modelSelect = document.createElement('select');
-            MODEL_OPTIONS.forEach(m => {
-                const opt = document.createElement('option');
-                opt.value = m;
-                opt.text = m.toUpperCase();
-                if (node.data.model === m) opt.selected = true;
-                modelSelect.appendChild(opt);
-            });
-            modelSelect.addEventListener('change', (e) => {
-                node.data.model = e.target.value;
-                this.updatePreview(node);
-                this.render();
-            });
-            container.appendChild(modelSelect);
+            const modelDropdown = document.createElement('div');
+            modelDropdown.className = 'ds-dropdown';
+            container.appendChild(modelDropdown);
+            this.setupDropdown(
+                modelDropdown,
+                MODEL_OPTIONS.map(m => ({ value: m, label: m.toUpperCase() })),
+                node.data.model || MODEL_OPTIONS[0],
+                'Select model',
+                (value) => {
+                    node.data.model = value;
+                    this.updatePreview(node);
+                    this.render();
+                }
+            );
 
             // Reasoning Effort
             container.appendChild(buildLabel('Reasoning Effort'));
-            container.appendChild(this.renderEffortSelect(node));
+            const effortDropdown = document.createElement('div');
+            effortDropdown.className = 'ds-dropdown';
+            container.appendChild(effortDropdown);
+            const effortOptions = (MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5']).map(optValue => ({
+                value: optValue,
+                label: optValue.charAt(0).toUpperCase() + optValue.slice(1)
+            }));
+            const selectedEffort = effortOptions.find(o => o.value === node.data.reasoningEffort)?.value || effortOptions[0].value;
+            node.data.reasoningEffort = selectedEffort;
+            this.setupDropdown(
+                effortDropdown,
+                effortOptions,
+                selectedEffort,
+                'Select effort',
+                (value) => {
+                    node.data.reasoningEffort = value;
+                }
+            );
 
             // Tools
             container.appendChild(buildLabel('Tools'));
@@ -748,6 +794,7 @@ export class WorkflowEditor {
             container.appendChild(buildLabel('Condition (Text contains)'));
             const condInput = document.createElement('input');
             condInput.type = 'text';
+            condInput.className = 'input';
             condInput.value = node.data.condition || '';
             condInput.addEventListener('input', (e) => {
                 node.data.condition = e.target.value;
@@ -759,6 +806,7 @@ export class WorkflowEditor {
             container.appendChild(buildLabel('Approval Message'));
             const pInput = document.createElement('input');
             pInput.type = 'text';
+            pInput.className = 'input';
             pInput.value = node.data.prompt || '';
             pInput.placeholder = 'Message shown to user when approval is required';
             pInput.addEventListener('input', (e) => {
@@ -1011,11 +1059,11 @@ export class WorkflowEditor {
         actions.className = 'approval-actions';
 
         const rejectBtn = document.createElement('button');
-        rejectBtn.className = 'reject-btn';
+        rejectBtn.className = 'button button-danger reject-btn';
         rejectBtn.textContent = 'Reject';
 
         const approveBtn = document.createElement('button');
-        approveBtn.className = 'approve-btn';
+        approveBtn.className = 'button button-success approve-btn';
         approveBtn.textContent = 'Approve';
 
         rejectBtn.addEventListener('click', () => this.submitApprovalDecision('reject'));

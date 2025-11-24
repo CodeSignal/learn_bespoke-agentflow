@@ -5,45 +5,60 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Agentic Workflow Builder</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200"
     />
+    <link rel="stylesheet" href="/design-system/colors/colors.css" />
+    <link rel="stylesheet" href="/design-system/spacing/spacing.css" />
+    <link rel="stylesheet" href="/design-system/typography/typography.css" />
+    <link rel="stylesheet" href="/design-system/components/button/button.css" />
+    <link rel="stylesheet" href="/design-system/components/boxes/boxes.css" />
+    <link rel="stylesheet" href="/design-system/components/dropdown/dropdown.css" />
+    <link rel="stylesheet" href="/design-system/components/icons/icons.css" />
+    <link rel="stylesheet" href="/design-system/components/input/input.css" />
+    <link rel="stylesheet" href="/design-system/components/tags/tags.css" />
   </head>
-  <body class="bespoke">
+  <body>
     <header class="header">
       <div class="header-left">
         <h1>Agent Builder</h1>
       </div>
-      <button id="btn-help" class="as-button ghost header-help">Help</button>
+      <button id="btn-help" class="button button-text-primary button-small header-help" type="button">Help</button>
     </header>
 
     <main class="main-layout">
       <div class="content-area" id="canvas-container">
-        <button id="btn-clear" class="canvas-clear">Clear Canvas</button>
+        <button id="btn-clear" class="button button-danger canvas-clear" type="button">Clear Canvas</button>
         <div class="palette-floating">
           <h3>Nodes</h3>
           <div class="node-palette">
             <div class="draggable-node" draggable="true" data-type="agent">
-              <span class="material-symbols-outlined">network_intelligence</span>Agent
+              <span class="icon icon-ai-and-machine-learning icon-primary"></span>Agent
             </div>
             <div class="draggable-node" draggable="true" data-type="if">
-              <span class="material-icons">call_split</span>If / Else
+              <span class="icon icon-path icon-primary"></span>If / Else
             </div>
             <div class="draggable-node" draggable="true" data-type="approval">
-              <span class="material-symbols-outlined">thumbs_up_down</span>User Approval
+              <span class="icon icon-chermark-badge icon-primary"></span>User Approval
             </div>
             <div class="draggable-node" draggable="true" data-type="end">
-              <span class="material-icons">flag</span>End
+              <span class="icon icon-rectangle-2698 icon-primary"></span>End
             </div>
           </div>
         </div>
         <div class="canvas-controls">
-          <button id="btn-zoom-out" class="ghost" title="Zoom out">
+          <button id="btn-zoom-out" class="button button-tertiary icon-control" title="Zoom out" type="button">
             <span class="material-icons">zoom_out</span>
           </button>
-          <button id="btn-zoom-in" class="ghost" title="Zoom in">
+          <button id="btn-zoom-in" class="button button-tertiary icon-control" title="Zoom in" type="button">
             <span class="material-icons">zoom_in</span>
           </button>
         </div>
@@ -73,7 +88,7 @@
               placeholder="Describe what the workflow should accomplish..."
             ></textarea>
           </div>
-          <button id="btn-run" class="primary" style="width: 100%; margin-top: 0.75rem;">Run Workflow</button>
+          <button id="btn-run" class="button button-primary run-button" type="button">Run Workflow</button>
         </div>
       </aside>
     </main>
@@ -88,8 +103,8 @@
           <p id="confirm-modal-message">Are you sure you want to continue?</p>
         </div>
         <div class="modal-footer" style="padding: 1rem; display: flex; justify-content: flex-end; gap: 0.5rem;">
-          <button id="confirm-modal-cancel" class="ghost">Cancel</button>
-          <button id="confirm-modal-confirm" class="primary">Confirm</button>
+          <button id="confirm-modal-cancel" class="button button-secondary">Cancel</button>
+          <button id="confirm-modal-confirm" class="button button-primary">Confirm</button>
         </div>
       </div>
     </div>
@@ -97,4 +112,3 @@
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-
