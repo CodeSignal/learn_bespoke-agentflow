@@ -1,5 +1,5 @@
-import OpenAI from 'openai';
-import { AgentInvocation, WorkflowLLM } from '@agentic/workflow-engine';
+import type OpenAI from 'openai';
+import type { AgentInvocation, WorkflowLLM } from '@agentic/workflow-engine';
 
 function formatInput(invocation: AgentInvocation) {
   return [

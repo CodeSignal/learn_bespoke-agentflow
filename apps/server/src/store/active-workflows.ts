@@ -1,4 +1,4 @@
-import WorkflowEngine from '@agentic/workflow-engine';
+import type WorkflowEngine from '@agentic/workflow-engine';
 
 const workflows = new Map<string, WorkflowEngine>();
 

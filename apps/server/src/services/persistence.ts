@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { WorkflowRunRecord } from '@agentic/types';
+import type { WorkflowRunRecord } from '@agentic/types';
 
 export async function saveRunRecord(runsDir: string, record: WorkflowRunRecord): Promise<void> {
   const filePath = path.join(runsDir, `run_${record.runId}.json`);

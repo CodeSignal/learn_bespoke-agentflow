@@ -1,7 +1,8 @@
 import type { Request, Response, Router } from 'express';
 import { Router as createRouter } from 'express';
-import { WorkflowGraph, WorkflowRunRecord, WorkflowRunResult } from '@agentic/types';
-import WorkflowEngine, { WorkflowLLM } from '@agentic/workflow-engine';
+import type { WorkflowGraph, WorkflowRunRecord, WorkflowRunResult } from '@agentic/types';
+import type { WorkflowLLM } from '@agentic/workflow-engine';
+import WorkflowEngine from '@agentic/workflow-engine';
 import { addWorkflow, getWorkflow, removeWorkflow } from '../store/active-workflows';
 import { saveRunRecord } from '../services/persistence';
 import { config } from '../config';
