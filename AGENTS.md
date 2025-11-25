@@ -1,375 +1,687 @@
-# BESPOKE GENERALIZED COMPONENTS - IMPLEMENTATION CONTEXT
+# CodeSignal Design System - Agent Reference Guide
 
-This document provides precise implementation instructions for creating embedded applications using the Bespoke generalized components. Follow these instructions exactly to ensure consistency across all applications.
+This document provides comprehensive information for agentic code generators to effectively use the CodeSignal Design System.
 
-## REQUIRED FILES STRUCTURE
+## Table of Contents
 
-Every application MUST include these files in the following order:
-
-1. bespoke.css (core styling framework)
-2. help-modal.js (help system)
-3. app.js (application logic)
-4. server.js (server)
-
-## HTML TEMPLATE IMPLEMENTATION
-
-1. REPLACE the following placeholders in index.html EXACTLY as specified:
-
-   a) `<!-- APP_TITLE -->`
-      Replace with your application's page title
-      Example: "Database Designer" or "Task Manager"
-
-   b) `<!-- APP_NAME -->`
-      Replace with your application's display name (appears in header)
-      Example: "Database Designer" or "Task Manager"
-
-   c) `<!-- APP_SPECIFIC_MAIN_CONTENT -->`
-      Add your application's main content area
-      Example: `<div id="canvas"></div>` or `<div id="editor"></div>`
-
-   d) `<!-- APP_SPECIFIC_CSS -->`
-      Add links to your application-specific CSS files
-      Example: `<link rel="stylesheet" href="./my-app.css" />`
-
-   e) `<!-- APP_SPECIFIC_SCRIPTS -->`
-      Add links to your application-specific JavaScript files
-      Example: `<script src="./my-app-logic.js"></script>`
-
-3. DO NOT modify the core structure (header, script loading order, etc.)
-
-## CSS IMPLEMENTATION
-
-1. ALWAYS use the `.bespoke` class on the body element
-2. USE ONLY the provided CSS custom properties for styling:
-   - Colors: `--bespoke-bg`, `--bespoke-fg`, `--bespoke-accent`, etc.
-   - Spacing: `--bespoke-space-xs` through `--bespoke-space-2xl`
-   - Typography: `--bespoke-font-size-*`, `--bespoke-font-weight-*`
-   - Borders: `--bespoke-radius-*`, `--bespoke-stroke`
-   - Shadows: `--bespoke-shadow-*`
-
-3. FOR custom styling, create app-specific CSS files
-4. OVERRIDE variables in your app-specific CSS, not in bespoke.css
-5. FOLLOW the existing naming conventions for consistency
-
-## JAVASCRIPT IMPLEMENTATION
-
-1. HELP MODAL SETUP:
-   a) Create help content using help-content-template.html as reference
-   b) Initialize HelpModal with:
-      - triggerSelector: `'#btn-help'`
-      - content: your help content (string or loaded from file)
-      - theme: `'auto'`
-
-2. STATUS MANAGEMENT:
-   a) Use the provided setStatus() function for status updates
-   b) Update status for: loading, saving, errors, user actions
-   c) Keep status messages concise and informative
-
-## ERROR HANDLING REQUIREMENTS
-
-1. WRAP all async operations in try-catch blocks
-2. PROVIDE meaningful error messages to users
-3. LOG errors to console for debugging
-4. IMPLEMENT retry logic for network operations
-5. HANDLE localStorage quota exceeded errors
-6. VALIDATE data before saving operations
-
-## STATUS MESSAGE CONVENTIONS
-
-Use these EXACT status messages for consistency:
-
-- "Ready" - Application loaded successfully
-- "Loading..." - Data is being loaded
-- "Saving..." - Data is being saved
-- "Changes saved" - Auto-save completed successfully
-- "Save failed (will retry)" - Server save failed, will retry
-- "Failed to load data" - Data loading failed
-- "Auto-save initialized" - Auto-save system started
-
-## FILE NAMING CONVENTIONS
-
-1. CSS files: kebab-case (e.g., my-app.css, task-manager.css)
-2. JavaScript files: kebab-case (e.g., my-app.js, task-manager.js)
-3. Data files: kebab-case (e.g., solution.json, initial-data.json)
-4. Image files: kebab-case (e.g., overview.png, help-icon.svg)
+1. [System Overview](#system-overview)
+2. [Installation & Setup](#installation--setup)
+3. [Design Tokens](#design-tokens)
+4. [Components](#components)
+5. [Usage Patterns](#usage-patterns)
+6. [Best Practices](#best-practices)
+7. [File Structure](#file-structure)
 
 ---
 
-# BESPOKE CSS SELECTOR GUIDELINES
+## System Overview
 
-This section explains how to use the Bespoke CSS framework for embedded applications.
+The CodeSignal Design System is a CSS-based design system organized into **Foundations** (design tokens) and **Components** (reusable UI elements). All components are built using CSS custom properties (CSS variables) for theming and consistency.
 
-## OVERVIEW
-The Bespoke CSS framework provides a scoped, reusable set of components that can be embedded in any website without conflicts. All styles are scoped under the `.bespoke` class to prevent interference with parent site styles.
+### Key Principles
 
-## BASIC USAGE
+- **Semantic over Primitive**: Always prefer semantic tokens (e.g., `--Colors-Text-Body-Default`) over base scale tokens
+- **Dark Mode Support**: All components automatically adapt to dark mode via `@media (prefers-color-scheme: dark)`
+- **CSS-First**: Components are primarily CSS-based with minimal JavaScript (only Dropdown requires JS)
+- **Accessibility**: Components follow WCAG guidelines and support keyboard navigation
 
-### 1. Include the CSS
+---
+
+## Installation & Setup
+
+### Required CSS Files (Load in Order)
+
 ```html
-<link rel="stylesheet" href="./generalised/bespoke.css" />
+<!-- 1. Fonts (Work Sans) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<!-- 2. Foundations (Required for all components) -->
+<link rel="stylesheet" href="/design-system/colors/colors.css">
+<link rel="stylesheet" href="/design-system/spacing/spacing.css">
+<link rel="stylesheet" href="/design-system/typography/typography.css">
+
+<!-- 3. Components (Include only what you need) -->
+<link rel="stylesheet" href="/design-system/components/button/button.css">
+<link rel="stylesheet" href="/design-system/components/boxes/boxes.css">
+<link rel="stylesheet" href="/design-system/components/dropdown/dropdown.css">
+<link rel="stylesheet" href="/design-system/components/icons/icons.css">
+<link rel="stylesheet" href="/design-system/components/input/input.css">
+<link rel="stylesheet" href="/design-system/components/tags/tags.css">
 ```
 
-### 2. Wrap Your Application
-```html
-<div class="bespoke">
-  <!-- Your embedded application content goes here -->
-</div>
-```
-
-### 3. Use the Component Classes
-```html
-<div class="bespoke">
-  <header class="header">
-    <h1>My App</h1>
-    <div class="status">Ready</div>
-  </header>
-
-  <main class="main-layout">
-    <aside class="sidebar">
-      <section class="card">
-        <h2>Settings</h2>
-        <form>
-          <label>Name
-            <input type="text" placeholder="Enter name" />
-          </label>
-          <button type="submit">Save</button>
-        </form>
-      </section>
-    </aside>
-
-    <div class="content-area">
-      <!-- Main content -->
-    </div>
-  </main>
-</div>
-```
-
-## COMPONENT REFERENCE
-
-### LAYOUT COMPONENTS
-
-#### Header
-```html
-<header class="header">
-  <h1>App Title</h1>
-  <div class="status">Status message</div>
-  <button class="as-button ghost">Help</button>
-</header>
-```
-
-#### Main Layout (Sidebar + Content)
-```html
-<main class="main-layout">
-  <aside class="sidebar">
-    <!-- Sidebar content -->
-  </aside>
-  <div class="content-area">
-    <!-- Main content area -->
-  </div>
-</main>
-```
-
-#### Cards
-```html
-<section class="card">
-  <h2>Card Title</h2>
-  <h3>Subtitle</h3>
-  <p>Card content goes here</p>
-</section>
-```
-
-### FORM COMPONENTS
-
-#### Labels
-```html
-<!-- Vertical label -->
-<label>Field Name
-  <input type="text" />
-</label>
-
-<!-- Horizontal label -->
-<label class="row">
-  <input type="checkbox" />
-  Checkbox Label
-</label>
-```
-
-#### Input Fields
-```html
-<!-- Text input -->
-<input type="text" placeholder="Enter text" />
-
-<!-- Select dropdown -->
-<select>
-  <option>Option 1</option>
-  <option>Option 2</option>
-</select>
-
-<!-- Checkbox -->
-<input type="checkbox" />
-
-<!-- Radio buttons -->
-<div class="radio-group">
-  <label class="row">
-    <input type="radio" name="option" value="a" />
-    Option A
-  </label>
-  <label class="row">
-    <input type="radio" name="option" value="b" />
-    Option B
-  </label>
-</div>
-
-<!-- Horizontal radio group -->
-<div class="radio-group horizontal">
-  <label class="row">
-    <input type="radio" name="size" value="small" />
-    Small
-  </label>
-  <label class="row">
-    <input type="radio" name="size" value="large" />
-    Large
-  </label>
-</div>
-
-<!-- Textarea -->
-<textarea placeholder="Enter your message here..."></textarea>
-
-<!-- Toggle switch -->
-<label class="row">
-  <div class="toggle">
-    <input type="checkbox" class="toggle-input" />
-    <span class="toggle-slider"></span>
-  </div>
-  <span class="toggle-label">Enable notifications</span>
-</label>
-```
-
-#### Buttons
-```html
-<!-- Default button -->
-<button>Click Me</button>
-
-<!-- Button variants -->
-<button class="primary">Primary Action</button>
-<button class="danger">Delete</button>
-<button class="ghost">Secondary</button>
-
-<!-- Button as link -->
-<a href="#" class="as-button">Link Button</a>
-```
-
-### MODAL COMPONENTS
-
-#### Basic Modal
-```html
-<div class="modal">
-  <div class="modal-backdrop"></div>
-  <div class="modal-content">
-    <div class="modal-header">
-      <h2>Modal Title</h2>
-      <button class="modal-close">&times;</button>
-    </div>
-    <div class="modal-body">
-      <p>Modal content goes here</p>
-    </div>
-  </div>
-</div>
-```
-
-## CUSTOMIZATION
-
-### CSS Custom Properties
-You can override any CSS custom property to customize the appearance:
+### Alternative: CSS Import
 
 ```css
-.bespoke {
-  /* Override colors */
-  --bespoke-bg: #f0f0f0;
-  --bespoke-fg: #333333;
-  --bespoke-accent: #ff6b6b;
+@import url('/design-system/colors/colors.css');
+@import url('/design-system/spacing/spacing.css');
+@import url('/design-system/typography/typography.css');
+@import url('/design-system/components/button/button.css');
+```
 
-  /* Override spacing */
-  --bespoke-space-lg: 1.5rem;
+### JavaScript (Only for Dropdown)
 
-  /* Override border radius */
-  --bespoke-radius-lg: 12px;
+```html
+<script type="module">
+  import Dropdown from '/design-system/components/dropdown/dropdown.js';
+</script>
+```
+
+---
+
+## Design Tokens
+
+### Colors
+
+#### Base Scales (Primitive Tokens)
+**Avoid using these directly** - use semantic tokens instead for theming support.
+
+Pattern: `--Colors-Base-[Family]-[Step]`
+
+**Families:**
+- `Primary`: Brand blue colors (20-1400 scale)
+- `Neutral`: Grays, white, black (00-1400 scale)
+- `Accent-Green`: Success states
+- `Accent-Sky-Blue`: Info states
+- `Accent-Yellow`: Warning states
+- `Accent-Orange`: Warning states
+- `Accent-Red`: Error/Danger states
+
+**Example:**
+```css
+--Colors-Base-Primary-700: #1062FB;
+--Colors-Base-Neutral-600: #ACB4C7;
+--Colors-Base-Accent-Green-600: #10B981;
+```
+
+#### Semantic Tokens (Preferred)
+**Always use these** for automatic dark mode support and consistency.
+
+**Categories:**
+
+1. **Primary Colors**
+   - `--Colors-Primary-Default`
+   - `--Colors-Primary-Medium`
+   - `--Colors-Primary-Strong`
+
+2. **Backgrounds**
+   - `--Colors-Backgrounds-Main-Default`
+   - `--Colors-Backgrounds-Main-Top`
+   - `--Colors-Backgrounds-Main-Medium`
+   - `--Colors-Backgrounds-Main-Strong`
+
+3. **Text Colors**
+   - `--Colors-Text-Body-Default`
+   - `--Colors-Text-Body-Secondary`
+   - `--Colors-Text-Body-Medium`
+   - `--Colors-Text-Body-Strong`
+   - `--Colors-Text-Body-Strongest`
+
+4. **Icon Colors**
+   - `--Colors-Icon-Default`
+   - `--Colors-Icon-Primary`
+   - `--Colors-Icon-Secondary`
+
+5. **Stroke/Border Colors**
+   - `--Colors-Stroke-Default`
+   - `--Colors-Stroke-Strong`
+   - `--Colors-Stroke-Strongest`
+
+6. **Alert Colors**
+   - `--Colors-Alert-Success-Default`, `--Colors-Alert-Success-Medium`
+   - `--Colors-Alert-Error-Default`, `--Colors-Alert-Error-Medium`
+   - `--Colors-Alert-Warning-Default`, `--Colors-Alert-Warning-Medium`
+   - `--Colors-Alert-Info-Default`, `--Colors-Alert-Info-Medium`
+
+### Spacing
+
+Pattern: `--UI-Spacing-spacing-[size]`
+
+**Available Sizes:**
+- `none`: 0
+- `min`: 2px
+- `xxs`: 4px
+- `xs`: 6px
+- `s`: 8px
+- `mxs`: 12px
+- `ms`: 16px
+- `m`: 18px
+- `ml`: 20px
+- `mxl`: 24px
+- `l`: 28px
+- `xl`: 32px
+- `xxl`: 36px
+- `xxxl`: 48px
+- `4xl`: 60px
+- `max`: 90px
+
+**Usage:**
+```css
+padding: var(--UI-Spacing-spacing-m);
+margin: var(--UI-Spacing-spacing-s);
+gap: var(--UI-Spacing-spacing-mxl);
+```
+
+### Border Radius
+
+Pattern: `--UI-Radius-radius-[size]`
+
+**Available Sizes:**
+- `none`: 0
+- `min`: 2px
+- `xxs`: 4px
+- `xs`: 6px
+- `s`: 8px
+- `m`: 12px
+- `ml`: 16px
+- `mxl`: 20px
+- `l`: 24px
+- `xl`: 32px
+
+**Usage:**
+```css
+border-radius: var(--UI-Radius-radius-m);
+```
+
+### Input Heights
+
+Pattern: `--UI-Input-[size]`
+
+**Available Sizes:**
+- `min`: 26px
+- `xs`: 32px
+- `sm`: 40px
+- `md`: 48px (default)
+- `lg`: 60px
+
+**Usage:**
+```css
+height: var(--UI-Input-md);
+```
+
+### Typography
+
+#### Font Families
+- **Body & Labels**: `Work Sans` (sans-serif) - Must be loaded from Google Fonts
+- **Headings**: `Founders Grotesk` (sans-serif) - Included via `@font-face`
+- **Code**: `JetBrains Mono` (monospace) - Included via `@font-face`
+
+#### Typography Classes
+
+**Body Text** (Work Sans):
+- `.body-xxsmall` (13px)
+- `.body-xsmall` (14px)
+- `.body-small` (15px)
+- `.body-medium` (16px)
+- `.body-large` (17px)
+- `.body-xlarge` (19px)
+- `.body-xxlarge` (21px)
+- `.body-xxxlarge` (24px)
+
+**Body Elegant** (Founders Grotesk):
+- `.body-elegant-xxsmall` (22px)
+- `.body-elegant-xsmall` (26px)
+- `.body-elegant-small` (32px)
+- `.body-elegant-medium` (38px)
+
+**Headings** (Founders Grotesk, 500 weight):
+- `.heading-xxxsmall` (16px)
+- `.heading-xxsmall` (22px)
+- `.heading-xsmall` (22px)
+- `.heading-small` (24px)
+- `.heading-medium` (32px)
+- `.heading-large` (38px)
+- `.heading-xlarge` (48px)
+- `.heading-xxlarge` (64px)
+
+**Labels** (Work Sans, 600 weight, uppercase):
+- `.label-small` (10px)
+- `.label-medium` (11px)
+- `.label-large` (14px)
+
+**Label Numbers** (Work Sans, 500 weight):
+- `.label-number-xsmall` (11px)
+- `.label-number-small` (12px)
+- `.label-number-medium` (14px)
+- `.label-number-large` (15px)
+
+---
+
+## Components
+
+### Button
+
+**Base Class:** `.button` (required)
+
+**Variants:**
+- `.button-primary`: Primary action (Brand Blue background)
+- `.button-secondary`: Secondary action (Outlined style)
+- `.button-tertiary`: Tertiary/Ghost (Subtle background)
+- `.button-danger`: Destructive action (Red)
+- `.button-success`: Positive action (Green)
+- `.button-text`: Text button (Neutral text, no background)
+- `.button-text-primary`: Primary text button (Brand color text)
+
+**Sizes:**
+- `.button-xsmall`: 32px height
+- `.button-small`: 40px height
+- Default: 48px height (medium)
+- `.button-large`: 60px height
+
+**States:**
+- Standard pseudo-classes: `:hover`, `:focus`, `:active`, `:disabled`
+- Utility classes: `.hover`, `.focus`, `.active`, `.disabled`
+
+**Example:**
+```html
+<button class="button button-primary button-large">Submit</button>
+<button class="button button-secondary button-small">Cancel</button>
+<button class="button button-danger" disabled>Delete</button>
+```
+
+**Dependencies:** colors.css, spacing.css, typography.css
+
+---
+
+### Box
+
+**Base Class:** `.box` (required)
+
+**Variants:**
+- `.box.selected`: Selected state (Primary border)
+- `.box.emphasized`: Emphasized state (Neutral border)
+- `.box.shadowed`: Soft shadow
+- `.box.card`: Card-style shadow
+
+**States:**
+- Standard pseudo-classes: `:hover`, `:focus`, `:active`
+- Utility classes: `.hover`, `.focus`, `.selected`
+
+**Example:**
+```html
+<div class="box">Default content</div>
+<div class="box selected">Selected content</div>
+<div class="box card">Card content</div>
+```
+
+**Dependencies:** colors.css, spacing.css
+
+---
+
+### Input
+
+**Base Class:** `.input` (required)
+
+**Input Types:**
+- `type="text"`: Standard text input (default)
+- `type="number"`: Numeric input with styled spinner buttons
+
+**States:**
+- Standard pseudo-classes: `:hover`, `:focus`, `:disabled`
+- Utility classes: `.hover`, `.focus`
+
+**Features:**
+- Automatic focus ring (primary color with reduced opacity)
+- Styled number input spinners
+- Dark mode support
+
+**Example:**
+```html
+<input type="text" class="input" placeholder="Enter text...">
+<input type="number" class="input" placeholder="Enter number...">
+<input type="text" class="input" disabled placeholder="Disabled">
+```
+
+**Dependencies:** colors.css, spacing.css, typography.css
+
+---
+
+### Tag
+
+**Base Class:** `.tag` or `.tag.default` (required)
+
+**Variants:**
+- `.tag` / `.tag.default`: Primary tag (Brand Blue background)
+- `.tag.secondary`: Secondary tag (Neutral gray background)
+- `.tag.outline`: Outline tag (Transparent with border)
+- `.tag.success`: Success tag (Green background)
+- `.tag.error`: Error tag (Red background)
+- `.tag.warning`: Warning tag (Yellow background)
+- `.tag.info`: Info tag (Sky Blue background)
+
+**States:**
+- Standard pseudo-classes: `:hover`, `:focus`, `:active`
+- Utility classes: `.hover`, `.focus`, `.active`
+
+**Example:**
+```html
+<div class="tag">Default</div>
+<div class="tag success">Completed</div>
+<div class="tag error">Failed</div>
+<div class="tag outline">Filter</div>
+```
+
+**Dependencies:** colors.css, spacing.css, typography.css
+
+---
+
+### Icon
+
+**Base Class:** `.icon` (required)
+
+**Icon Names:**
+Use `.icon-[name]` where `[name]` is derived from SVG filename (e.g., `Icon=Academy.svg` → `.icon-academy`)
+
+**Available Icons** (80+ icons):
+- `.icon-academy`
+- `.icon-assessment`
+- `.icon-interview`
+- `.icon-jobs`
+- `.icon-course`
+- ... (see `icons.css` for full list)
+
+**Sizes:**
+- `.icon-small`: 16px
+- `.icon-medium`: 24px (default)
+- `.icon-large`: 32px
+- `.icon-xlarge`: 48px
+
+**Colors:**
+- Default: Uses `currentColor` (inherits text color)
+- `.icon-primary`: Primary brand color
+- `.icon-secondary`: Secondary neutral color
+- `.icon-success`: Success green color
+- `.icon-danger`: Danger red color
+- `.icon-warning`: Warning yellow color
+
+**Implementation Note:**
+Icons use `mask-image` with `background-color` for color control. SVGs in data URIs use black fills (black = visible in mask).
+
+**Example:**
+```html
+<span class="icon icon-jobs"></span>
+<span class="icon icon-jobs icon-large icon-primary"></span>
+<span class="icon icon-academy icon-small icon-success"></span>
+```
+
+**Dependencies:** colors.css, spacing.css
+
+---
+
+### Dropdown (JavaScript Component)
+
+**Import:**
+```javascript
+import Dropdown from '/design-system/components/dropdown/dropdown.js';
+```
+
+**Initialization:**
+```javascript
+const dropdown = new Dropdown(selector, options);
+```
+
+**Configuration Options:**
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `items` | Array | `[]` | Array of `{value, label}` objects |
+| `placeholder` | String | `'Select option'` | Placeholder text |
+| `selectedValue` | String | `null` | Initial selected value |
+| `width` | String/Number | `'auto'` | Fixed width (ignored if `growToFit` is true) |
+| `growToFit` | Boolean | `false` | Auto-resize to fit content |
+| `onSelect` | Function | `null` | Callback `(value, item)` on selection |
+
+**API Methods:**
+- `getValue()`: Returns current selected value
+- `setValue(value)`: Sets selected value programmatically
+- `open()`: Opens dropdown menu
+- `close()`: Closes dropdown menu
+- `toggleOpen()`: Toggles open state
+- `destroy()`: Removes event listeners and clears container
+
+**Example:**
+```javascript
+const dropdown = new Dropdown('#my-dropdown', {
+  placeholder: 'Choose an option',
+  items: [
+    { value: '1', label: 'Option 1' },
+    { value: '2', label: 'Option 2' },
+    { value: '3', label: 'Option 3' }
+  ],
+  onSelect: (value, item) => {
+    console.log('Selected:', value, item);
+  }
+});
+
+// Later...
+dropdown.setValue('2');
+const currentValue = dropdown.getValue();
+```
+
+**Dependencies:** colors.css, spacing.css, typography.css
+
+---
+
+## Usage Patterns
+
+### Component Composition
+
+Components can be combined and nested:
+
+```html
+<!-- Button with icon -->
+<button class="button button-primary">
+  <span class="icon icon-jobs icon-small"></span>
+  Submit
+</button>
+
+<!-- Tag with icon -->
+<div class="tag success">
+  <span class="icon icon-check icon-small"></span>
+  Completed
+</div>
+
+<!-- Box with input and button -->
+<div class="box">
+  <input type="text" class="input" placeholder="Search...">
+  <button class="button button-primary button-small">Search</button>
+</div>
+```
+
+### Custom Styling
+
+You can extend components using CSS custom properties:
+
+```css
+.my-custom-button {
+  /* Inherit button styles */
+  composes: button button-primary;
+  
+  /* Override with custom properties */
+  --Colors-Base-Primary-700: #custom-color;
 }
 ```
 
-### Available Custom Properties
+### Responsive Design
 
-#### Colors
-- `--bespoke-bg`: Background color
-- `--bespoke-fg`: Text color
-- `--bespoke-muted`: Muted text color
-- `--bespoke-box`: Container/surface background
-- `--bespoke-stroke`: Border color
-- `--bespoke-danger`: Error/danger color
-- `--bespoke-accent`: Accent/primary color
-- `--bespoke-control-bg`: Input/button background
-- `--bespoke-control-border`: Input/button border
-- `--bespoke-control-focus`: Focus ring color
+Use standard CSS media queries with design tokens:
 
-#### Spacing
-- `--bespoke-space-xs`: 0.25rem
-- `--bespoke-space-sm`: 0.5rem
-- `--bespoke-space-md`: 0.75rem
-- `--bespoke-space-lg`: 1rem
-- `--bespoke-space-xl`: 1.5rem
-- `--bespoke-space-2xl`: 2rem
-
-#### Border Radius
-- `--bespoke-radius-sm`: 4px
-- `--bespoke-radius-md`: 6px
-- `--bespoke-radius-lg`: 8px
-- `--bespoke-radius-xl`: 12px
-
-#### Shadows
-- `--bespoke-shadow-sm`: Small shadow
-- `--bespoke-shadow-md`: Medium shadow
-- `--bespoke-shadow-lg`: Large shadow
-- `--bespoke-shadow-xl`: Extra large shadow
-
-## THEME SUPPORT
-
-### Automatic Dark Mode
-The framework automatically detects the user's system preference and switches between light and dark themes. No additional configuration is needed.
-
-## INTEGRATION EXAMPLES
-
-### Database Designer
-```html
-<div class="bespoke">
-  <header class="header">
-    <h1>DB Schema Designer</h1>
-    <button id="btn-save">Save</button>
-    <div class="status">Ready</div>
-    <button class="as-button ghost">Help</button>
-  </header>
-
-  <main class="main-layout">
-    <aside class="sidebar">
-      <section class="card">
-        <h2>New Table</h2>
-        <form>
-          <label>Table name
-            <input type="text" placeholder="users" />
-          </label>
-          <button type="submit">Add Table</button>
-        </form>
-      </section>
-    </aside>
-
-    <div class="content-area">
-      <!-- Diagram area -->
-    </div>
-  </main>
-</div>
+```css
+@media (max-width: 768px) {
+  .responsive-box {
+    padding: var(--UI-Spacing-spacing-s);
+  }
+}
 ```
-## BEST PRACTICES
 
-1. **Always wrap in `.bespoke`**: This prevents style conflicts with the parent site
-2. **Use semantic HTML**: Combine with proper HTML elements for accessibility
-3. **Customize via CSS variables**: Don't modify the core CSS file
-4. **Test in both themes**: Ensure your app works in light and dark modes
+---
+
+## Best Practices
+
+### 1. Token Usage
+
+✅ **DO:**
+```css
+color: var(--Colors-Text-Body-Default);
+padding: var(--UI-Spacing-spacing-m);
+border-radius: var(--UI-Radius-radius-m);
+```
+
+❌ **DON'T:**
+```css
+color: #333;
+padding: 16px;
+border-radius: 8px;
+```
+
+### 2. Component Classes
+
+✅ **DO:**
+```html
+<button class="button button-primary">Click</button>
+```
+
+❌ **DON'T:**
+```html
+<button class="btn btn-primary">Click</button>
+```
+
+### 3. Dark Mode
+
+✅ **DO:** Use semantic tokens (automatic dark mode)
+```css
+background: var(--Colors-Backgrounds-Main-Default);
+```
+
+❌ **DON'T:** Use hardcoded colors
+```css
+background: #ffffff;
+```
+
+### 4. File Loading Order
+
+✅ **DO:** Load foundations before components
+```html
+<!-- Foundations first -->
+<link rel="stylesheet" href="colors/colors.css">
+<link rel="stylesheet" href="spacing/spacing.css">
+<link rel="stylesheet" href="typography/typography.css">
+
+<!-- Then components -->
+<link rel="stylesheet" href="components/button/button.css">
+```
+
+### 5. Icon Usage
+
+✅ **DO:**
+```html
+<span class="icon icon-jobs icon-large icon-primary"></span>
+```
+
+❌ **DON'T:** Use inline SVG or img tags for icons
+```html
+<img src="icon.svg" alt="icon">
+```
+
+### 6. Accessibility
+
+- Always include proper `alt` text for images
+- Use semantic HTML (`<button>`, `<input>`, etc.)
+- Ensure keyboard navigation works
+- Test with screen readers
+
+---
+
+## File Structure
+
+```
+design-system/
+├── colors/
+│   ├── colors.css          # Color tokens (base + semantic)
+│   ├── README.md
+│   └── test.html
+├── spacing/
+│   ├── spacing.css          # Spacing, radius, input height tokens
+│   ├── README.md
+│   └── test.html
+├── typography/
+│   ├── typography.css        # Typography classes and font definitions
+│   ├── README.md
+│   └── test.html
+├── fonts/
+│   └── FoundersGrotesk-*.woff2
+├── components/
+│   ├── button/
+│   │   ├── button.css
+│   │   ├── README.md
+│   │   └── test.html
+│   ├── boxes/
+│   │   ├── boxes.css
+│   │   ├── README.md
+│   │   └── test.html
+│   ├── dropdown/
+│   │   ├── dropdown.css
+│   │   ├── dropdown.js
+│   │   ├── README.md
+│   │   └── test.html
+│   ├── icons/
+│   │   ├── icons.css         # 80+ icon definitions
+│   │   ├── README.md
+│   │   └── test.html
+│   ├── input/
+│   │   ├── input.css
+│   │   ├── README.md
+│   │   └── test.html
+│   └── tags/
+│       ├── tags.css
+│       ├── README.md
+│       └── test.html
+├── test.html                 # Test bed navigation
+├── README.md
+├── llms.txt                  # Quick reference for LLMs
+└── agents.md                 # This file
+```
+
+---
+
+## Testing
+
+Each component includes a `test.html` file demonstrating usage. The main test bed is available at:
+
+```
+http://[your-server]/design-system/test.html
+```
+
+This provides:
+- Sidebar navigation to all components
+- Interactive examples
+- Code snippets
+- Visual regression testing
+
+---
+
+## Version Information
+
+- **Design System Version**: Current
+- **Browser Support**: Modern browsers (Chrome, Firefox, Safari, Edge)
+- **CSS Features Used**: CSS Custom Properties, CSS Grid, Flexbox, CSS Masks
+- **JavaScript**: ES6 Modules (Dropdown component only)
+
+---
+
+## Additional Resources
+
+- **Main README**: See `README.md` for overview
+- **Component READMEs**: Each component has detailed documentation
+- **Test Files**: See `test.html` files for examples
+- **Demo Site**: https://codesignal.github.io/learn_bespoke-design-system/test.html
+
+---
+
+## Support & Contribution
+
+For questions or issues:
+1. Check component-specific README files
+2. Review test.html examples
+3. Inspect CSS files for available tokens and classes
