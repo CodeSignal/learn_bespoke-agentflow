@@ -41,6 +41,7 @@ body {
     overflow-y: auto;
     width: var(--right-sidebar-width);
     min-width: var(--right-sidebar-width);
+    box-sizing: border-box;
 }
 
 .palette-floating {
@@ -693,6 +694,7 @@ path.connection-line.active {
     resize: vertical;
     background: var(--Colors-Backgrounds-Main-Default);
     color: var(--Colors-Text-Body-Strong);
+    box-sizing: border-box;
 }
 
 .chat-input input[type="text"] {
@@ -703,6 +705,7 @@ path.connection-line.active {
     font-size: var(--Fonts-Body-Default-xs);
     background: var(--Colors-Backgrounds-Main-Default);
     color: var(--Colors-Text-Body-Strong);
+    box-sizing: border-box;
 }
 
 .run-button {
@@ -762,6 +765,8 @@ path.connection-line.active {
     background: var(--Colors-Backgrounds-Main-Top);
     border-radius: var(--UI-Radius-radius-m);
     box-shadow: 0 12px 38px 0 var(--Colors-Shadow-Float, rgba(22, 44, 96, 0.12));
+    max-width: 600px;
+    width: min(600px, calc(100% - 2rem));
     max-height: 90vh;
     overflow-y: auto;
 }

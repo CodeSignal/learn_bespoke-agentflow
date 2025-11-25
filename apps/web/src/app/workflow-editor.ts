@@ -132,8 +132,8 @@ export class WorkflowEditor {
                 this.runButton.disabled = true;
                 break;
             case 'paused':
-                this.runButton.textContent = 'Resume';
-                this.runButton.disabled = false;
+                this.runButton.textContent = 'Paused';
+                this.runButton.disabled = true;
                 break;
             case 'idle':
             default:
@@ -1190,11 +1190,8 @@ export class WorkflowEditor {
     }
 
     async runWorkflow() {
-        // If paused, resume instead
-        if (this.workflowState === 'paused' && this.currentRunId) {
-            this.submitApprovalDecision('approve');
-            return;
-        }
+        // Don't start new workflow if already running or paused
+        if (this.workflowState !== 'idle') return;
 
         this.upgradeLegacyNodes();
         const startNode = this.nodes.find(n => n.type === 'start');
