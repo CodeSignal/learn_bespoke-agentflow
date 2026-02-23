@@ -109,6 +109,10 @@ body {
     #canvas-container {
         background-image: radial-gradient(color-mix(in srgb, var(--Colors-Stroke-Default) 10%, transparent) 1px, transparent 1px);
     }
+
+    .tool-list .tool-item.selected {
+        background: color-mix(in srgb, var(--Colors-Tags-Primary) 35%, var(--Colors-Tags-Secondary));
+    }
 }
 
 #canvas-container.panning {
@@ -503,6 +507,8 @@ path.connection-line.active {
     width: fit-content;
     border: none;
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
 }
 
 .tool-list .tool-item:hover {
