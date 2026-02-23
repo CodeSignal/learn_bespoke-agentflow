@@ -51,14 +51,5 @@ export const helpContent = `
     <summary>Why does a workflow pause?</summary>
     <p>Approval nodes intentionally pause execution until you make a decision in the Run Console.</p>
   </details>
-  <details>
-    <summary>Where are run logs stored?</summary>
-    <p>Each execution is saved under <code>data/runs/run_*.json</code> for later auditing.</p>
-  </details>
-  <details>
-    <summary>Do I need an OpenAI key?</summary>
-    <p>No. Without <code>OPENAI_API_KEY</code>, the engine returns mock responses. Provide the key for live model calls.</p>
-  </details>
 </section>
 `;
-

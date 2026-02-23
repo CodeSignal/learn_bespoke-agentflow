@@ -55,6 +55,10 @@ data/
 | `npm run lint` | ESLint via the repo-level config. |
 | `npm run typecheck` | TypeScript in both apps. |
 
+## Run Readiness
+
+Workflow run preflight rules and blocking conditions are documented in `apps/web/docs/run-readiness.md`.
+
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
