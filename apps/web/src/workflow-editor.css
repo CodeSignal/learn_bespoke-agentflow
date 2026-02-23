@@ -480,49 +480,18 @@ path.connection-line.active {
     color: var(--Colors-Text-Body-Default);
 }
 
+.tool-list .tool-tag {
+    width: fit-content;
+    border: none;
+    cursor: pointer;
+}
+
 .tool-list .tool-item:hover {
     color: var(--Colors-Text-Body-Strong);
 }
 
-/* Custom checkbox styling */
-.tool-list .tool-checkbox {
-    appearance: none;
-    -webkit-appearance: none;
-    width: 18px;
-    height: 18px;
-    border: 2px solid var(--Colors-Stroke-Strong);
-    border-radius: var(--UI-Radius-radius-xxs);
-    background: var(--Colors-Backgrounds-Main-Top);
-    cursor: pointer;
-    position: relative;
-    flex-shrink: 0;
-    transition: all 0.15s ease;
-}
-
-.tool-list .tool-checkbox:hover {
-    border-color: var(--Colors-Primary-Medium);
-}
-
-.tool-list .tool-checkbox:checked {
-    background: var(--Colors-Primary-Default);
-    border-color: var(--Colors-Primary-Default);
-}
-
-.tool-list .tool-checkbox:checked::after {
-    content: '';
-    position: absolute;
-    left: 5px;
-    top: 2px;
-    width: 4px;
-    height: 8px;
-    border: solid var(--Colors-Text-Body-White);
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-
-.tool-list .tool-checkbox:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px var(--Colors-Primary-Lightest);
+.tool-list .tool-item.selected .tool-item-icon {
+    color: var(--Colors-Primary-Medium);
 }
 
 /* Right Sidebar - Chat Panel */
@@ -786,6 +755,10 @@ path.connection-line.active {
 .run-button {
     width: 100%;
     margin-top: var(--UI-Spacing-spacing-mxs);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--UI-Spacing-spacing-s);
 }
 
 /* Confirmation Modal Adjustments */

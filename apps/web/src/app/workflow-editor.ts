@@ -149,7 +149,7 @@ export class WorkflowEditor {
                 break;
             case 'idle':
             default:
-                this.runButton.textContent = 'Run Workflow';
+                this.runButton.innerHTML = 'Run Workflow <span class="icon icon-rocket icon-small" aria-hidden="true"></span>';
                 this.runButton.disabled = false;
                 break;
         }
@@ -615,7 +615,7 @@ export class WorkflowEditor {
             delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'button button-tertiary button-small icon-btn delete';
-            delBtn.innerHTML = '<span class="icon icon-theme-light-state-open icon-danger"></span>';
+            delBtn.innerHTML = '<span class="icon icon-trash icon-danger"></span>';
             delBtn.title = 'Delete Node';
             delBtn.addEventListener('mousedown', async (e) => {
                  e.stopPropagation(); 
@@ -695,7 +695,7 @@ export class WorkflowEditor {
     getNodeLabel(node) {
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim() || 'Agent';
-            return `<span class="icon icon-ai-and-machine-learning icon-primary"></span>${name}`;
+            return `<span class="icon icon-robot icon-primary"></span>${name}`;
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
         if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
@@ -808,24 +808,36 @@ export class WorkflowEditor {
             toolsList.className = 'tool-list';
 
             const toolItems = [
-                { key: 'web_search', label: 'Web Search' }
+                { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
             ];
 
             toolItems.forEach(tool => {
-                const row = document.createElement('label');
-                row.className = 'tool-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'tool-checkbox';
-                checkbox.checked = node.data.tools?.[tool.key] || false;
-                checkbox.addEventListener('change', (e) => {
-                    if (!node.data.tools) node.data.tools = {};
-                    node.data.tools[tool.key] = e.target.checked;
-                });
-                row.appendChild(checkbox);
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'tool-item tool-tag tag secondary';
+
+                if (tool.iconClass) {
+                    const icon = document.createElement('span');
+                    icon.className = `icon ${tool.iconClass} icon-small tool-item-icon`;
+                    row.appendChild(icon);
+                }
                 const labelText = document.createElement('span');
                 labelText.textContent = tool.label;
                 row.appendChild(labelText);
+
+                const setSelected = (selected) => {
+                    if (!node.data.tools) node.data.tools = {};
+                    node.data.tools[tool.key] = selected;
+                    row.classList.toggle('selected', selected);
+                    row.classList.toggle('secondary', !selected);
+                    row.setAttribute('aria-pressed', String(selected));
+                };
+
+                setSelected(Boolean(node.data.tools?.[tool.key]));
+                row.addEventListener('click', () => {
+                    setSelected(!Boolean(node.data.tools?.[tool.key]));
+                });
+
                 toolsList.appendChild(row);
             });
 
