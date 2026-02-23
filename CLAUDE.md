@@ -14,7 +14,7 @@ npm workspace monorepo:
 |---------|---------|
 | `packages/types` | Shared TypeScript contracts (`WorkflowNode`, `WorkflowGraph`, `WorkflowRunResult`, etc.) |
 | `packages/workflow-engine` | Pure runtime executor (`WorkflowEngine` class, `WorkflowLLM` interface) — no OpenAI dependency |
-| `apps/server` | Express API + Vite dev middleware. Routes: `POST /api/run`, `POST /api/resume` |
+| `apps/server` | Express API + Vite dev middleware. Routes: `POST /api/run`, `POST /api/run-stream`, `POST /api/resume` |
 | `apps/web` | Vite SPA — `WorkflowEditor` class handles canvas, node palette, and run console |
 | `design-system/` | Git submodule (CodeSignal DS) — CSS tokens and components consumed by web app |
 
@@ -36,7 +36,9 @@ npm run build:packages       # Build only shared packages (types + engine)
 
 ## Architecture
 
-**Request flow:** Browser (`api.ts`) → Express routes (`routes/workflows.ts`) → `WorkflowEngine.run()` → `OpenAILLMService.respond()` (OpenAI Responses API) → result persisted to `data/runs/run_<id>.json` → response returned to client.
+**Request flow (streaming):** Browser (`api.ts` `runWorkflowStream`) → `POST /api/run-stream` → `WorkflowEngine.run()` with `onLog` callback → each `WorkflowLogEntry` is streamed to the client as an SSE event → final result persisted to `data/runs/run_<id>.json` → `done` event sent to close stream. This is the primary run path — the UI renders agent responses progressively as they arrive.
+
+**Request flow (batch):** `POST /api/run` runs the same engine synchronously and returns the full `WorkflowRunResult` as JSON. Still available but not used by the default UI.
 
 **Approval/pause flow:** When engine hits an Approval node, it sets `waitingForInput=true` and the engine instance is stored in an in-memory `Map` (`store/active-workflows.ts`). Client calls `POST /api/resume` with user input to continue.
 

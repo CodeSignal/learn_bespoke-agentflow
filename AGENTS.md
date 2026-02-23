@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 This repository is an npm workspace monorepo:
-- `apps/server`: Express API + Vite middleware integration (`src/index.ts`).
+- `apps/server`: Express API + Vite middleware integration (`src/index.ts`). Routes: `POST /api/run-stream` (SSE, primary), `POST /api/run` (batch JSON), `POST /api/resume` (approval resumption).
 - `apps/web`: Vite frontend for the workflow editor (`src/app/workflow-editor.ts`).
 - `packages/types`: Shared TypeScript contracts used by server, web, and engine.
 - `packages/workflow-engine`: Reusable workflow execution runtime.

@@ -18,7 +18,7 @@ data/
 ## Key Features
 
 - **Visual Editor** – Canvas, floating palette, zoom controls, and inline node forms for prompts, branching rules, and approval copy.
-- **Run Console** – Chat-style stream that differentiates user prompts, agent turns, spinner states, and approval requests.
+- **Run Console** – Chat-style panel that renders agent responses progressively as they arrive via SSE, with per-agent labels, spinner states, and approval requests.
 - **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Responses API or mock).
 - **Persistent Audit Trail** – Every run writes `data/runs/run_<timestamp>.json` containing the workflow graph plus raw execution logs, independent of what the UI chooses to display.
 
@@ -62,7 +62,7 @@ Workflow run preflight rules and blocking conditions are documented in `apps/web
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
-- **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, require an OpenAI-backed LLM for Agent nodes, and persist run records through `saveRunRecord()` into `data/runs/`.
+- **Server (`apps/server`)**: Three Express routes handle execution. `/api/run-stream` is the primary path — it streams each `WorkflowLogEntry` to the client as an SSE event via the engine's `onLog` callback, so the UI can render agent responses progressively. `/api/run` offers the same execution as a single synchronous JSON response. `/api/resume` continues paused approval workflows.
 - **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
 
