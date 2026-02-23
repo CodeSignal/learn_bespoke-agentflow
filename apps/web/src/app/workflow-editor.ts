@@ -2,7 +2,7 @@
 // Bespoke Agent Builder - Client Logic
 
 import type { WorkflowGraph } from '@agentic/types';
-import { runWorkflow, resumeWorkflow } from '../services/api';
+import { runWorkflowStream, resumeWorkflow } from '../services/api';
 
 const EXPANDED_NODE_WIDTH = 420;
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
@@ -47,6 +47,7 @@ export class WorkflowEditor {
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
         this.activeRunController = null;
+        this.lastLlmResponseContent = null;
 
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
@@ -328,21 +329,21 @@ export class WorkflowEditor {
         this.runHistory.push({ role: 'user', content: text });
     }
 
-    showAgentSpinner() {
+    showAgentSpinner(name?: string) {
         if (!this.chatMessages) return;
         this.hideAgentSpinner();
-        const name = this.getPrimaryAgentName();
+        const resolvedName = name || this.getPrimaryAgentName();
         const spinner = document.createElement('div');
         spinner.className = 'chat-message agent spinner';
         const label = document.createElement('span');
         label.className = 'chat-message-label';
-        label.textContent = `${name} agent`;
+        label.textContent = resolvedName;
         spinner.appendChild(label);
         const body = document.createElement('div');
         body.className = 'chat-spinner-row';
         const text = document.createElement('span');
         text.className = 'chat-spinner-text';
-        text.textContent = `${name} is working`;
+        text.textContent = `${resolvedName} is working`;
         const dots = document.createElement('span');
         dots.className = 'chat-spinner';
         dots.innerHTML = '<span></span><span></span><span></span>';
@@ -653,7 +654,7 @@ export class WorkflowEditor {
                 return { 
                     agentName: 'Agent',
                     systemPrompt: 'You are a helpful assistant.', 
-                    userPrompt: '',
+                    userPrompt: '{{PREVIOUS_OUTPUT}}',
                     model: 'gpt-5', 
                     reasoningEffort: 'low',
                     tools: { web_search: false },
@@ -878,6 +879,7 @@ export class WorkflowEditor {
             container.appendChild(buildLabel('System Prompt'));
             const sysInput = document.createElement('textarea');
             sysInput.className = 'input textarea-input';
+            sysInput.placeholder = 'Define the agent\'s role, persona, or instructions.';
             sysInput.value = node.data.systemPrompt || '';
             sysInput.addEventListener('input', (e) => {
                 node.data.systemPrompt = e.target.value;
@@ -885,12 +887,12 @@ export class WorkflowEditor {
             });
             container.appendChild(sysInput);
 
-            // User Prompt Override
-            container.appendChild(buildLabel('User Prompt Override (optional)'));
+            // Input
+            container.appendChild(buildLabel('Input'));
             const userInput = document.createElement('textarea');
             userInput.className = 'input textarea-input';
-            userInput.placeholder = 'If left empty, uses previous node output.';
-            userInput.value = node.data.userPrompt || '';
+            userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
+            userInput.value = node.data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
             userInput.addEventListener('input', (e) => {
                 node.data.userPrompt = e.target.value;
             });
@@ -1298,7 +1300,7 @@ export class WorkflowEditor {
 
     // --- CHAT PANEL HELPERS ---
 
-    appendChatMessage(text, role = 'system') {
+    appendChatMessage(text, role = 'system', agentName?: string) {
         if (!this.chatMessages) return;
         const message = document.createElement('div');
         message.className = `chat-message ${role}`;
@@ -1309,7 +1311,7 @@ export class WorkflowEditor {
         if (role === 'agent') {
             const label = document.createElement('span');
             label.className = 'chat-message-label';
-            label.textContent = this.getPrimaryAgentName();
+            label.textContent = agentName || this.getPrimaryAgentName();
             message.appendChild(label);
         }
         const body = document.createElement('div');
@@ -1319,12 +1321,9 @@ export class WorkflowEditor {
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
 
-    startChatSession(promptText) {
+    startChatSession(_promptText) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        if (promptText && promptText.trim().length > 0) {
-            this.logManualUserMessage(promptText.trim());
-        }
         this.showAgentSpinner();
     }
 
@@ -1341,20 +1340,54 @@ export class WorkflowEditor {
         return typeof content === 'string' ? content : '';
     }
 
+    getAgentNameForNode(nodeId: string): string {
+        const node = this.nodes.find(n => n.id === nodeId);
+        return (node?.data?.agentName || '').trim() || 'Agent';
+    }
+
+    onLogEntry(entry) {
+        const type = entry.type || '';
+        if (type === 'step_start') {
+            const node = this.nodes.find(n => n.id === entry.nodeId);
+            if (node?.type === 'agent') {
+                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
+            }
+        } else if (type === 'start_prompt') {
+            // Only show the user's initial input (before any agent has responded)
+            if (entry.content && this.lastLlmResponseContent === null) {
+                this.hideAgentSpinner();
+                this.appendChatMessage(entry.content, 'user');
+                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
+            }
+        } else if (type === 'llm_response') {
+            this.hideAgentSpinner();
+            this.lastLlmResponseContent = entry.content ?? null;
+            this.appendChatMessage(entry.content || '', 'agent', this.getAgentNameForNode(entry.nodeId));
+        } else if (type === 'llm_error' || type === 'error') {
+            this.hideAgentSpinner();
+            this.appendChatMessage(entry.content || '', 'error');
+        }
+    }
+
     renderChatFromLogs(logs = []) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
+        this.lastLlmResponseContent = null;
         let messageShown = false;
         logs.forEach(entry => {
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
+            // Only show the user's initial input (before any agent has responded)
+            if (entry.type === 'start_prompt' && this.lastLlmResponseContent !== null) return;
+            if (entry.type === 'llm_response') this.lastLlmResponseContent = entry.content ?? null;
             if ((role === 'agent' || role === 'error') && !messageShown) {
                 this.hideAgentSpinner();
                 messageShown = true;
             }
             const text = this.formatLogContent(entry);
             if (!text) return;
-            this.appendChatMessage(text, role);
+            const agentName = role === 'agent' ? this.getAgentNameForNode(entry.nodeId) : undefined;
+            this.appendChatMessage(text, role, agentName);
         });
         if (!messageShown) {
             this.showAgentSpinner();
@@ -1376,6 +1409,7 @@ export class WorkflowEditor {
 
         this.currentPrompt = this.initialPrompt.value || '';
         this.startChatSession(this.currentPrompt);
+        this.lastLlmResponseContent = null;
 
         // Update Start Node with initial input
         startNode.data.initialInput = this.currentPrompt;
@@ -1388,8 +1422,12 @@ export class WorkflowEditor {
         this.activeRunController = controller;
 
         try {
-            const result = await runWorkflow(graph, { signal: controller.signal });
-            this.handleRunResult(result);
+            const result = await runWorkflowStream(
+                graph,
+                (entry) => this.onLogEntry(entry),
+                { signal: controller.signal }
+            );
+            this.handleRunResult(result, true);
 
         } catch (e) {
             if (this.isAbortError(e)) return;
@@ -1404,8 +1442,8 @@ export class WorkflowEditor {
         }
     }
 
-    handleRunResult(result) {
-        if (result.logs) {
+    handleRunResult(result, fromStream = false) {
+        if (!fromStream && result.logs) {
             this.renderChatFromLogs(result.logs);
         }
         const hasLlmError = Array.isArray(result.logs)
