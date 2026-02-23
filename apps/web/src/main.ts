@@ -1,7 +1,6 @@
 import './workflow-editor.css';
 
 import WorkflowEditor from './app/workflow-editor';
-import { HelpModal } from './components/help-modal';
 import { helpContent } from './data/help-content';
 
 declare global {
@@ -12,5 +11,25 @@ declare global {
 
 document.addEventListener('DOMContentLoaded', () => {
   window.editor = new WorkflowEditor();
-  HelpModal.init({ content: helpContent });
+  const helpTrigger = document.getElementById('btn-help');
+  if (!helpTrigger) return;
+
+  const origin = window.location.origin;
+  const modalModulePath = `${origin}/design-system/components/modal/modal.js`;
+
+  import(/* @vite-ignore */ modalModulePath)
+    .then(({ default: Modal }) => {
+      const helpModal = Modal.createHelpModal({
+        title: 'Help / User Guide',
+        content: helpContent
+      });
+
+      helpTrigger.addEventListener('click', (event) => {
+        event.preventDefault();
+        helpModal.open();
+      });
+    })
+    .catch((error) => {
+      console.warn('Failed to initialize DS help modal', error);
+    });
 });

@@ -28,7 +28,7 @@ body {
 /* Main Layout Override for 2-column structure */
 .main-layout {
     display: grid;
-    grid-template-columns: 1fr 6px var(--right-sidebar-width);
+    grid-template-columns: 1fr var(--right-sidebar-width);
     height: 100vh;
     overflow: hidden;
 }
@@ -40,10 +40,20 @@ body {
     display: flex;
     flex-direction: column;
     gap: var(--UI-Spacing-spacing-mxs);
-    overflow-y: auto;
-    width: var(--right-sidebar-width);
-    min-width: var(--right-sidebar-width);
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
     box-sizing: border-box;
+}
+
+.split-panel-container {
+    height: 100vh;
+}
+
+.split-panel-container .split-panel-left,
+.split-panel-container .split-panel-right {
+    overflow: hidden;
+    min-height: 0;
 }
 
 .palette-floating {
@@ -115,6 +125,9 @@ body {
 /* Canvas Area */
 #canvas-container {
     position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
     overflow: hidden;
     background-image: radial-gradient(var(--Colors-Stroke-Default) 1px, transparent 1px);
     background-size: 20px 20px;
@@ -496,10 +509,12 @@ path.connection-line.active {
 
 /* Right Sidebar - Chat Panel */
 .chat-panel {
-    height: calc(100vh - var(--UI-Spacing-spacing-ms));
+    height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     padding: var(--UI-Spacing-spacing-mxs);
+    box-sizing: border-box;
 }
 
 .chat-header {
@@ -514,6 +529,7 @@ path.connection-line.active {
 }
 .chat-messages {
     flex: 1;
+    min-height: 0;
     background: var(--Colors-Backgrounds-Main-Light);
     border: 1px solid var(--Colors-Stroke-Default);
     border-radius: var(--UI-Radius-radius-s);
@@ -759,95 +775,4 @@ path.connection-line.active {
     align-items: center;
     justify-content: center;
     gap: var(--UI-Spacing-spacing-s);
-}
-
-/* Confirmation Modal Adjustments */
-#confirm-modal .modal-content {
-    max-width: 420px;
-    width: min(420px, calc(100% - 2rem));
-}
-
-#confirm-modal .modal-header,
-#confirm-modal .modal-body,
-#confirm-modal .modal-footer {
-    padding: var(--UI-Spacing-spacing-ms);
-}
-
-#confirm-modal .modal-body {
-    font-size: var(--Fonts-Body-Default-md);
-    color: var(--Colors-Text-Body-Strong);
-}
-
-#confirm-modal .modal-footer {
-    border-top: 1px solid var(--Colors-Stroke-Default);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--UI-Spacing-spacing-s);
-}
-
-/* Modal Base Styles */
-.modal {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 1000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.modal-backdrop {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: var(--Colors-Base-Neutral-Alphas-1400-50);
-    backdrop-filter: blur(2px);
-}
-
-.modal-content {
-    position: relative;
-    background: var(--Colors-Backgrounds-Main-Top);
-    border-radius: var(--UI-Radius-radius-m);
-    box-shadow: 0 12px 38px 0 var(--Colors-Shadow-Float, rgba(22, 44, 96, 0.12));
-    max-width: 600px;
-    width: min(600px, calc(100% - 2rem));
-    max-height: 90vh;
-    overflow-y: auto;
-}
-
-.modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: var(--UI-Spacing-spacing-ms);
-    border-bottom: 1px solid var(--Colors-Stroke-Default);
-}
-
-.modal-header h2 {
-    margin: 0;
-    font-size: var(--Fonts-Headlines-xsm);
-}
-
-.modal-close {
-    background: none;
-    border: none;
-    font-size: var(--Fonts-Body-Default-xxl);
-    cursor: pointer;
-    color: var(--Colors-Text-Body-Medium);
-    padding: var(--UI-Spacing-spacing-xxs);
-    line-height: 1;
-}
-
-.modal-close:hover {
-    color: var(--Colors-Text-Body-Strong);
-}
-
-.modal-body {
-    padding: var(--UI-Spacing-spacing-ms);
-    max-height: 60vh;
-    overflow-y: auto;
 }

@@ -24,6 +24,8 @@
     <link rel="stylesheet" href="/design-system/components/dropdown/dropdown.css" />
     <link rel="stylesheet" href="/design-system/components/icons/icons.css" />
     <link rel="stylesheet" href="/design-system/components/input/input.css" />
+    <link rel="stylesheet" href="/design-system/components/modal/modal.css" />
+    <link rel="stylesheet" href="/design-system/components/split-panel/split-panel.css" />
     <link rel="stylesheet" href="/design-system/components/tags/tags.css" />
   </head>
   <body>
@@ -61,7 +63,6 @@
         </div>
       </div>
 
-      <div class="panel-resizer" id="right-resizer"></div>
       <aside class="sidebar-right" id="right-panel">
         <div class="chat-panel">
           <div class="chat-header">
@@ -85,22 +86,6 @@
         </div>
       </aside>
     </main>
-
-    <div class="modal confirm-modal" id="confirm-modal" style="display: none;">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <div class="modal-header">
-          <h2 id="confirm-modal-title">Confirm Action</h2>
-        </div>
-        <div class="modal-body">
-          <p id="confirm-modal-message">Are you sure you want to continue?</p>
-        </div>
-        <div class="modal-footer">
-          <button id="confirm-modal-cancel" class="button button-secondary">Cancel</button>
-          <button id="confirm-modal-confirm" class="button button-primary">Confirm</button>
-        </div>
-      </div>
-    </div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

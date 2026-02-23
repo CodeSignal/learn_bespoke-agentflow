@@ -41,22 +41,19 @@ export class WorkflowEditor {
         this.runButton = document.getElementById('btn-run');
         this.workflowState = 'idle'; // 'idle' | 'running' | 'paused'
         this.rightPanel = document.getElementById('right-panel');
-        this.rightResizer = document.getElementById('right-resizer');
         this.pendingAgentMessage = null;
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
-        this.confirmModal = document.getElementById('confirm-modal');
-        this.confirmTitle = document.getElementById('confirm-modal-title');
-        this.confirmMessage = document.getElementById('confirm-modal-message');
-        this.confirmConfirmBtn = document.getElementById('confirm-modal-confirm');
-        this.confirmCancelBtn = document.getElementById('confirm-modal-cancel');
-        this.confirmBackdrop = this.confirmModal ? this.confirmModal.querySelector('.modal-backdrop') : null;
+
+        this.splitPanelCtorPromise = null;
+        this.dropdownCtorPromise = null;
+        this.modalCtorPromise = null;
+        this.initSplitPanelLayout();
 
         // Bindings
         this.initDragAndDrop();
         this.initCanvasInteractions();
         this.initButtons();
-        this.initPanelControls();
         
         // WebSocket for Logs
         this.initWebSocket();
@@ -65,8 +62,6 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
-
-        this.dropdownCtorPromise = null;
     }
 
     async getDropdownCtor() {
@@ -76,6 +71,50 @@ export class WorkflowEditor {
             this.dropdownCtorPromise = import(/* @vite-ignore */ dropdownModulePath).then((mod) => mod.default);
         }
         return this.dropdownCtorPromise;
+    }
+
+    async getSplitPanelCtor() {
+        if (!this.splitPanelCtorPromise) {
+            const origin = window.location.origin;
+            const splitPanelModulePath = `${origin}/design-system/components/split-panel/split-panel.js`;
+            this.splitPanelCtorPromise = import(/* @vite-ignore */ splitPanelModulePath).then((mod) => mod.default);
+        }
+        return this.splitPanelCtorPromise;
+    }
+
+    async getModalCtor() {
+        if (!this.modalCtorPromise) {
+            const origin = window.location.origin;
+            const modalModulePath = `${origin}/design-system/components/modal/modal.js`;
+            this.modalCtorPromise = import(/* @vite-ignore */ modalModulePath).then((mod) => mod.default);
+        }
+        return this.modalCtorPromise;
+    }
+
+    async initSplitPanelLayout() {
+        const mainLayout = document.querySelector('.main-layout');
+        if (!mainLayout || !this.canvas || !this.rightPanel) return;
+
+        const rightWidthVar = getComputedStyle(document.documentElement)
+            .getPropertyValue('--right-sidebar-width')
+            .trim();
+        const rightWidth = Number.parseFloat(rightWidthVar) || 320;
+        const containerWidth = mainLayout.getBoundingClientRect().width || window.innerWidth || 1280;
+        const initialSplit = ((containerWidth - rightWidth) / containerWidth) * 100;
+        const clampedSplit = Math.max(40, Math.min(80, initialSplit));
+
+        try {
+            const SplitPanelCtor = await this.getSplitPanelCtor();
+            this.splitPanel = new SplitPanelCtor(mainLayout, {
+                initialSplit: clampedSplit,
+                minLeft: 40,
+                minRight: 20
+            });
+            this.splitPanel.getLeftPanel().appendChild(this.canvas);
+            this.splitPanel.getRightPanel().appendChild(this.rightPanel);
+        } catch (error) {
+            console.warn('Failed to initialize split panel layout', error);
+        }
     }
 
     async setupDropdown(container, items, selectedValue, placeholder, onSelect) {
@@ -376,34 +415,6 @@ export class WorkflowEditor {
         if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.resetViewport());
     }
 
-    initPanelControls() {
-        if (this.rightResizer && this.rightPanel) {
-            let isDragging = false;
-
-            const onMouseMove = (e) => {
-                if (!isDragging) return;
-                const newWidth = Math.min(600, Math.max(240, window.innerWidth - e.clientX));
-                document.documentElement.style.setProperty('--right-sidebar-width', `${newWidth}px`);
-            };
-
-            const onMouseUp = () => {
-                if (!isDragging) return;
-                isDragging = false;
-                this.rightResizer.classList.remove('dragging');
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-            };
-
-            this.rightResizer.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                isDragging = true;
-                this.rightResizer.classList.add('dragging');
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-        }
-    }
-
     initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
@@ -412,7 +423,7 @@ export class WorkflowEditor {
         };
     }
 
-    openConfirmModal(options = {}) {
+    async openConfirmModal(options = {}) {
         const {
             title = 'Confirm',
             message = 'Are you sure?',
@@ -420,48 +431,45 @@ export class WorkflowEditor {
             cancelLabel = 'Cancel'
         } = options;
 
-        if (!this.confirmModal || !this.confirmConfirmBtn || !this.confirmCancelBtn) {
-            return Promise.resolve(window.confirm(message));
+        try {
+            const ModalCtor = await this.getModalCtor();
+            const content = document.createElement('p');
+            content.textContent = message;
+
+            return await new Promise((resolve) => {
+                let confirmed = false;
+
+                const modal = new ModalCtor({
+                    size: 'small',
+                    title,
+                    content,
+                    footerButtons: [
+                        {
+                            label: cancelLabel,
+                            type: 'secondary',
+                            onClick: (_event, instance) => instance.close()
+                        },
+                        {
+                            label: confirmLabel,
+                            type: 'primary',
+                            onClick: (_event, instance) => {
+                                confirmed = true;
+                                instance.close();
+                            }
+                        }
+                    ],
+                    onClose: () => {
+                        modal.destroy();
+                        resolve(confirmed);
+                    }
+                });
+
+                modal.open();
+            });
+        } catch (error) {
+            console.warn('Failed to initialize DS confirm modal', error);
+            return window.confirm(message);
         }
-
-        if (this.confirmTitle) this.confirmTitle.textContent = title;
-        if (this.confirmMessage) this.confirmMessage.textContent = message;
-        this.confirmConfirmBtn.textContent = confirmLabel;
-        this.confirmCancelBtn.textContent = cancelLabel;
-
-        return new Promise((resolve) => {
-            const cleanup = () => {
-                this.confirmModal.style.display = 'none';
-                this.confirmConfirmBtn.removeEventListener('click', onConfirm);
-                this.confirmCancelBtn.removeEventListener('click', onCancel);
-                if (this.confirmBackdrop) {
-                    this.confirmBackdrop.removeEventListener('click', onCancel);
-                }
-                document.removeEventListener('keydown', onKeydown);
-            };
-
-            const onConfirm = () => {
-                cleanup();
-                resolve(true);
-            };
-
-            const onCancel = () => {
-                cleanup();
-                resolve(false);
-            };
-
-            const onKeydown = (event) => {
-                if (event.key === 'Escape') onCancel();
-            };
-
-            this.confirmModal.style.display = 'flex';
-            document.addEventListener('keydown', onKeydown);
-            this.confirmConfirmBtn.addEventListener('click', onConfirm);
-            this.confirmCancelBtn.addEventListener('click', onCancel);
-            if (this.confirmBackdrop) {
-                this.confirmBackdrop.addEventListener('click', onCancel);
-            }
-        });
     }
 
     // --- NODE MANAGEMENT ---
