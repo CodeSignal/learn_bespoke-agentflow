@@ -64,6 +64,8 @@ export class WorkflowEditor {
 
         this.applyViewport();
         this.updateRunButton();
+        this.addDefaultStartNode();
+        this.upgradeLegacyNodes(true);
         this.loadDefaultWorkflow();
     }
 
@@ -115,6 +117,16 @@ export class WorkflowEditor {
             });
             this.splitPanel.getLeftPanel().appendChild(this.canvas);
             this.splitPanel.getRightPanel().appendChild(this.rightPanel);
+
+            // Canvas now has correct dimensions — reposition the Start node if it's
+            // still the only node (i.e. no default-workflow.json was loaded yet or at all)
+            const startNode = this.nodes.find(n => n.type === 'start');
+            if (startNode && this.nodes.length === 1) {
+                const pos = this.getDefaultStartPosition();
+                startNode.x = pos.x;
+                startNode.y = pos.y;
+                this.render();
+            }
         } catch (error) {
             console.warn('Failed to initialize split panel layout', error);
         }
@@ -628,16 +640,11 @@ export class WorkflowEditor {
     async loadDefaultWorkflow() {
         try {
             const res = await fetch('/api/default-workflow');
-            if (!res.ok) {
-                this.addDefaultStartNode();
-                this.upgradeLegacyNodes(true);
-                return;
-            }
+            if (!res.ok) return;
             const graph = await res.json();
             this.loadWorkflow(graph);
         } catch {
-            this.addDefaultStartNode();
-            this.upgradeLegacyNodes(true);
+            // keep the default start node already rendered synchronously
         }
     }
 
@@ -662,7 +669,7 @@ export class WorkflowEditor {
 
     getDefaultStartPosition() {
         const container = this.canvas;
-        const fallback = { x: 200, y: 200 };
+        const fallback = { x: 370, y: 310 };
         if (!container) return fallback;
         const rect = container.getBoundingClientRect();
         if (!rect.width || !rect.height) return fallback;
