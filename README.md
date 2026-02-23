@@ -11,6 +11,9 @@ apps/
 packages/
   types/             # Shared TypeScript contracts (nodes, graphs, run logs)
   workflow-engine/   # Reusable workflow executor w/ pluggable LLM interface
+.config/
+  config.json        # Provider + model definitions (committed)
+  default-workflow.json  # Optional startup workflow (gitignored)
 data/
   runs/              # JSON snapshots of each workflow execution
 ```
@@ -62,7 +65,7 @@ Workflow run preflight rules and blocking conditions are documented in `apps/web
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
-- **Server (`apps/server`)**: Three Express routes handle execution. `/api/run-stream` is the primary path — it streams each `WorkflowLogEntry` to the client as an SSE event via the engine's `onLog` callback, so the UI can render agent responses progressively. `/api/run` offers the same execution as a single synchronous JSON response. `/api/resume` continues paused approval workflows.
+- **Server (`apps/server`)**: Five Express routes. `/api/run-stream` is the primary execution path — streams each `WorkflowLogEntry` as an SSE event so the UI renders progressively. `/api/run` is the same execution as a single JSON response. `/api/resume` continues paused approval workflows. `/api/config` serves `.config/config.json` (provider/model definitions). `/api/default-workflow` serves `.config/default-workflow.json` if present.
 - **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
 

@@ -14,7 +14,7 @@ npm workspace monorepo:
 |---------|---------|
 | `packages/types` | Shared TypeScript contracts (`WorkflowNode`, `WorkflowGraph`, `WorkflowRunResult`, etc.) |
 | `packages/workflow-engine` | Pure runtime executor (`WorkflowEngine` class, `WorkflowLLM` interface) — no OpenAI dependency |
-| `apps/server` | Express API + Vite dev middleware. Routes: `POST /api/run`, `POST /api/run-stream`, `POST /api/resume` |
+| `apps/server` | Express API + Vite dev middleware. Routes: `POST /api/run`, `POST /api/run-stream`, `POST /api/resume`, `GET /api/config`, `GET /api/default-workflow` |
 | `apps/web` | Vite SPA — `WorkflowEditor` class handles canvas, node palette, and run console |
 | `design-system/` | Git submodule (CodeSignal DS) — CSS tokens and components consumed by web app |
 
@@ -90,9 +90,19 @@ Components currently used in the web app:
 - Tests: `*.test.ts` co-located near the feature. Vitest for web, CI runs lint → build:packages → typecheck → build.
 - Commits: short imperative subjects, Conventional Commit prefixes (`feat(web):`, `fix:`, `chore:`).
 
+## Local Configuration (`.config/`)
+
+The `.config/` directory holds developer-local files that are partially gitignored:
+
+- **`config.json`** *(committed)* — provider and model definitions. The server serves this via `GET /api/config`; the web app loads it on startup to populate the model and reasoning-effort dropdowns. Structure: `{ providers: [{ id, name, enabled, models: [{ id, name, reasoningEfforts[] }] }] }`.
+- **`default-workflow.json`** *(gitignored)* — optional startup workflow. If present, the editor loads it instead of the blank Start node. Same `{ nodes, connections }` shape as a run record's `workflow` field.
+
+Agent node `userPrompt` fields support `{{PREVIOUS_OUTPUT}}` as a template token, which is substituted with the previous node's output before the LLM is called.
+
 ## Environment
 
 - Requires Node.js 20+.
 - `OPENAI_API_KEY` must be exported in your shell for Agent node execution.
 - `data/runs/` is gitignored — created automatically at runtime.
+- `.config/default-workflow.json` is gitignored — create it locally to preload a workflow on startup.
 - Clone with `--recurse-submodules` to pull the design-system submodule.
