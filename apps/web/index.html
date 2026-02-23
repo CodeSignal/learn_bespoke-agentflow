@@ -80,7 +80,18 @@
               placeholder="Describe what the workflow should accomplish..."
             ></textarea>
           </div>
-          <button id="btn-run" class="button button-primary run-button" type="button">Run Workflow</button>
+          <div class="run-actions">
+            <button id="btn-run" class="button button-primary run-button" type="button">Run Workflow</button>
+            <button
+              id="btn-cancel-run"
+              class="button button-danger cancel-run-button"
+              type="button"
+              title="Cancel run"
+              aria-label="Cancel run"
+            >
+              <span class="icon icon-rectangle-2698 icon-small" aria-hidden="true"></span>
+            </button>
+          </div>
         </div>
       </aside>
     </main>

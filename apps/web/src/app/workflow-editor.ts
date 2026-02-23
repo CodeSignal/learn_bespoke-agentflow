@@ -39,12 +39,14 @@ export class WorkflowEditor {
         this.chatMessages = document.getElementById('chat-messages');
         this.initialPrompt = document.getElementById('initial-prompt');
         this.runButton = document.getElementById('btn-run');
+        this.cancelRunButton = document.getElementById('btn-cancel-run');
         this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle'; // 'idle' | 'running' | 'paused'
         this.rightPanel = document.getElementById('right-panel');
         this.pendingAgentMessage = null;
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
+        this.activeRunController = null;
 
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
@@ -181,22 +183,132 @@ export class WorkflowEditor {
         this.updateRunButton();
     }
 
+    setRunButtonHint(reason) {
+        if (!this.runButton) return;
+        if (reason) {
+            this.runButton.title = reason;
+            this.runButton.setAttribute('data-disabled-hint', reason);
+        } else {
+            this.runButton.removeAttribute('title');
+            this.runButton.removeAttribute('data-disabled-hint');
+        }
+    }
+
+    isAbortError(error) {
+        if (!error) return false;
+        if (error.name === 'AbortError') return true;
+        const message = typeof error.message === 'string' ? error.message : '';
+        return message.toLowerCase().includes('aborted');
+    }
+
+    cancelRunningWorkflow() {
+        if (this.activeRunController) {
+            this.activeRunController.abort();
+            this.activeRunController = null;
+        }
+        if (this.workflowState === 'running') {
+            this.hideAgentSpinner();
+            this.clearApprovalMessage();
+            this.appendStatusMessage('Cancelled');
+            this.currentRunId = null;
+            this.setWorkflowState('idle');
+        }
+    }
+
+    getRunDisableReason() {
+        const startNodes = this.nodes.filter(node => node.type === 'start');
+        if (startNodes.length === 0) {
+            return 'Add a Start node to run the workflow.';
+        }
+        if (startNodes.length > 1) {
+            return 'Use only one Start node before running.';
+        }
+
+        const nodeIdSet = new Set(this.nodes.map(node => node.id));
+        const hasBrokenConnection = this.connections.some(
+            (conn) => !nodeIdSet.has(conn.source) || !nodeIdSet.has(conn.target)
+        );
+        if (hasBrokenConnection) {
+            return 'Fix broken connections before running.';
+        }
+
+        const startNode = startNodes[0];
+        const adjacency = new Map();
+        this.connections.forEach((conn) => {
+            if (!adjacency.has(conn.source)) adjacency.set(conn.source, []);
+            adjacency.get(conn.source).push(conn);
+        });
+
+        const startConnections = adjacency.get(startNode.id) || [];
+        if (startConnections.length === 0) {
+            return 'Connect Start to another node before running.';
+        }
+
+        const reachable = new Set([startNode.id]);
+        const queue = [startNode.id];
+        while (queue.length > 0) {
+            const nodeId = queue.shift();
+            const next = adjacency.get(nodeId) || [];
+            next.forEach((conn) => {
+                if (!reachable.has(conn.target)) {
+                    reachable.add(conn.target);
+                    queue.push(conn.target);
+                }
+            });
+        }
+
+        if (reachable.size <= 1) {
+            return 'Add and connect at least one node after Start.';
+        }
+
+        for (const node of this.nodes) {
+            if (!reachable.has(node.id)) continue;
+            if (node.type === 'if') {
+                const outgoing = adjacency.get(node.id) || [];
+                const hasTrue = outgoing.some((conn) => conn.sourceHandle === 'true');
+                const hasFalse = outgoing.some((conn) => conn.sourceHandle === 'false');
+                if (!hasTrue && !hasFalse) {
+                    return 'Connect at least one branch for each If / Else node.';
+                }
+            }
+            if (node.type === 'approval' || node.type === 'input') {
+                const outgoing = adjacency.get(node.id) || [];
+                const hasApprove = outgoing.some((conn) => conn.sourceHandle === 'approve');
+                const hasReject = outgoing.some((conn) => conn.sourceHandle === 'reject');
+                if (!hasApprove && !hasReject) {
+                    return 'Connect at least one branch for each approval node.';
+                }
+            }
+        }
+
+        return null;
+    }
+
     updateRunButton() {
         if (!this.runButton) return;
+        if (this.cancelRunButton) {
+            const showCancel = this.workflowState === 'running';
+            this.cancelRunButton.style.display = showCancel ? 'inline-flex' : 'none';
+            this.cancelRunButton.disabled = !showCancel;
+        }
         
         switch (this.workflowState) {
             case 'running':
                 this.runButton.textContent = 'Running...';
                 this.runButton.disabled = true;
+                this.setRunButtonHint('Workflow is currently running.');
                 break;
             case 'paused':
                 this.runButton.textContent = 'Paused';
                 this.runButton.disabled = true;
+                this.setRunButtonHint('Workflow is paused waiting for approval.');
                 break;
             case 'idle':
             default:
+                const disabledReason = this.getRunDisableReason();
                 this.runButton.innerHTML = 'Run Workflow <span class="icon icon-rocket icon-small" aria-hidden="true"></span>';
-                this.runButton.disabled = false;
+                this.runButton.disabled = Boolean(disabledReason);
+                this.setRunButtonHint(disabledReason);
                 break;
         }
     }
@@ -385,6 +497,10 @@ export class WorkflowEditor {
 
     initButtons() {
         document.getElementById('btn-run').addEventListener('click', () => this.runWorkflow());
+        const cancelRunBtn = document.getElementById('btn-cancel-run');
+        if (cancelRunBtn) {
+            cancelRunBtn.addEventListener('click', () => this.cancelRunningWorkflow());
+        }
         document.getElementById('btn-clear').addEventListener('click', async () => {
             const confirmed = await this.openConfirmModal({
                 title: 'Clear Canvas',
@@ -488,6 +604,7 @@ export class WorkflowEditor {
         };
         this.nodes.push(node);
         this.renderNode(node);
+        this.updateRunButton();
     }
 
     upgradeLegacyNodes(shouldRender = false) {
@@ -503,6 +620,8 @@ export class WorkflowEditor {
         });
         if (updated && shouldRender) {
             this.render();
+        } else if (updated) {
+            this.updateRunButton();
         }
     }
 
@@ -561,6 +680,7 @@ export class WorkflowEditor {
         this.nodes = this.nodes.filter(n => n.id !== id);
         this.connections = this.connections.filter(c => c.source !== id && c.target !== id);
         this.render();
+        this.updateRunButton();
     }
 
     // --- RENDERING ---
@@ -570,6 +690,7 @@ export class WorkflowEditor {
         this.connectionsLayer.innerHTML = '';
         this.nodes.forEach(n => this.renderNode(n));
         this.renderConnections();
+        this.updateRunButton();
     }
 
     renderNode(node) {
@@ -973,6 +1094,7 @@ export class WorkflowEditor {
             if(this.tempConnection) this.tempConnection.remove();
             this.connectionStart = null;
             this.tempConnection = null;
+            this.updateRunButton();
         } else if (this.reconnectingConnection !== null) {
             // Released without connecting to anything - connection already deleted, just clean up
             this.reconnectingConnection = null;
@@ -980,6 +1102,7 @@ export class WorkflowEditor {
             if(this.tempConnection) this.tempConnection.remove();
             this.connectionStart = null;
             this.tempConnection = null;
+            this.updateRunButton();
         }
     }
 
@@ -1013,6 +1136,7 @@ export class WorkflowEditor {
         // Remove the original connection temporarily
         this.connections.splice(connIndex, 1);
         this.renderConnections();
+        this.updateRunButton();
         
         // Create temp connection for dragging
         this.tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1260,16 +1384,23 @@ export class WorkflowEditor {
             nodes: this.nodes,
             connections: this.connections
         };
+        const controller = new AbortController();
+        this.activeRunController = controller;
 
         try {
-            const result = await runWorkflow(graph);
+            const result = await runWorkflow(graph, { signal: controller.signal });
             this.handleRunResult(result);
 
         } catch (e) {
-            this.appendChatMessage('Error: ' + e.message, 'error');
+            if (this.isAbortError(e)) return;
+            this.appendChatMessage(e.message, 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+        } finally {
+            if (this.activeRunController === controller) {
+                this.activeRunController = null;
+            }
         }
     }
 
@@ -1318,15 +1449,22 @@ export class WorkflowEditor {
         this.replaceApprovalWithResult(decision, note);
         this.setWorkflowState('running');
         this.showAgentSpinner();
+        const controller = new AbortController();
+        this.activeRunController = controller;
         
         try {
-            const result = await resumeWorkflow(this.currentRunId, { decision, note });
+            const result = await resumeWorkflow(this.currentRunId, { decision, note }, { signal: controller.signal });
             this.handleRunResult(result);
         } catch (e) {
+            if (this.isAbortError(e)) return;
             this.appendChatMessage(e.message, 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+        } finally {
+            if (this.activeRunController === controller) {
+                this.activeRunController = null;
+            }
         }
     }
 }

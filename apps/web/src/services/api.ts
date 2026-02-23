@@ -1,10 +1,15 @@
 import type { ApprovalInput, WorkflowGraph, WorkflowRunResult } from '@agentic/types';
 
-async function request<T>(url: string, body: unknown): Promise<T> {
+type RequestOptions = {
+  signal?: AbortSignal;
+};
+
+async function request<T>(url: string, body: unknown, options: RequestOptions = {}): Promise<T> {
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: options.signal
   });
 
   if (!res.ok) {
@@ -37,10 +42,14 @@ async function request<T>(url: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export function runWorkflow(graph: WorkflowGraph): Promise<WorkflowRunResult> {
-  return request<WorkflowRunResult>('/api/run', { graph });
+export function runWorkflow(graph: WorkflowGraph, options: RequestOptions = {}): Promise<WorkflowRunResult> {
+  return request<WorkflowRunResult>('/api/run', { graph }, options);
 }
 
-export function resumeWorkflow(runId: string, input: ApprovalInput): Promise<WorkflowRunResult> {
-  return request<WorkflowRunResult>('/api/resume', { runId, input });
+export function resumeWorkflow(
+  runId: string,
+  input: ApprovalInput,
+  options: RequestOptions = {}
+): Promise<WorkflowRunResult> {
+  return request<WorkflowRunResult>('/api/resume', { runId, input }, options);
 }

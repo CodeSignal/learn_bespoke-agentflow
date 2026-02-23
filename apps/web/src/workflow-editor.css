@@ -772,11 +772,68 @@ path.connection-line.active {
     box-sizing: border-box;
 }
 
-.run-button {
-    width: 100%;
+.run-actions {
     margin-top: var(--UI-Spacing-spacing-mxs);
+    display: flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-s);
+}
+
+.run-button {
+    flex: 1;
+    width: auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: var(--UI-Spacing-spacing-s);
+    position: relative;
+    overflow: visible;
+}
+
+.cancel-run-button {
+    width: var(--UI-Input-md);
+    min-width: var(--UI-Input-md);
+    height: var(--UI-Input-md);
+    padding: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+
+.run-button:disabled {
+    pointer-events: auto;
+    cursor: not-allowed;
+}
+
+.run-button:disabled[data-disabled-hint]:hover::after {
+    content: attr(data-disabled-hint);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--UI-Spacing-spacing-s));
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(320px, calc(100vw - 32px));
+    padding: var(--UI-Spacing-spacing-s) var(--UI-Spacing-spacing-ms);
+    border-radius: var(--UI-Radius-radius-xs);
+    border: 1px solid var(--Colors-Stroke-Strong);
+    background: var(--Colors-Backgrounds-Main-Top);
+    color: var(--Colors-Text-Body-Strong);
+    font-size: var(--Fonts-Body-Default-xxs);
+    line-height: 1.4;
+    white-space: normal;
+    text-align: left;
+    z-index: 30;
+    box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+}
+
+.run-button:disabled[data-disabled-hint]:hover::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--UI-Spacing-spacing-xxs));
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--Colors-Backgrounds-Main-Top);
+    z-index: 31;
 }
