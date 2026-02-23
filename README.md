@@ -28,7 +28,10 @@ data/
    ```bash
    npm install
    ```
-2. (Optional) create `.env` with `OPENAI_API_KEY=sk-...`. Without it the engine falls back to deterministic mock responses.
+2. Export your OpenAI API key in the shell:
+   ```bash
+   export OPENAI_API_KEY="sk-..."
+   ```
 3. Start the integrated dev server (Express + embedded Vite middleware on one port):
    ```bash
    npm run dev
