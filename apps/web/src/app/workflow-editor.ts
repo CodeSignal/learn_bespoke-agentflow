@@ -64,8 +64,7 @@ export class WorkflowEditor {
 
         this.applyViewport();
         this.updateRunButton();
-        this.addDefaultStartNode();
-        this.upgradeLegacyNodes(true);
+        this.loadDefaultWorkflow();
     }
 
     async getDropdownCtor() {
@@ -624,6 +623,34 @@ export class WorkflowEditor {
         } else if (updated) {
             this.updateRunButton();
         }
+    }
+
+    async loadDefaultWorkflow() {
+        try {
+            const res = await fetch('/api/default-workflow');
+            if (!res.ok) {
+                this.addDefaultStartNode();
+                this.upgradeLegacyNodes(true);
+                return;
+            }
+            const graph = await res.json();
+            this.loadWorkflow(graph);
+        } catch {
+            this.addDefaultStartNode();
+            this.upgradeLegacyNodes(true);
+        }
+    }
+
+    loadWorkflow(graph) {
+        this.nodes = graph.nodes ?? [];
+        this.connections = graph.connections ?? [];
+        const maxId = this.nodes.reduce((max, n) => {
+            const num = parseInt(n.id.replace('node_', ''), 10);
+            return isNaN(num) ? max : Math.max(max, num);
+        }, 0);
+        this.nextNodeId = maxId + 1;
+        this.upgradeLegacyNodes();
+        this.render();
     }
 
     addDefaultStartNode() {

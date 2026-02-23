@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import { Router as createRouter } from 'express';
 import type { WorkflowGraph, WorkflowRunRecord, WorkflowRunResult } from '@agentic/types';
@@ -147,6 +149,27 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to resume workflow', message);
       res.status(500).json({ error: 'Failed to resume workflow', details: message });
+    }
+  });
+
+  router.get('/default-workflow', (_req: Request, res: Response) => {
+    const filePath = path.join(config.projectRoot, 'default-workflow.json');
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'No default workflow found' });
+      return;
+    }
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const graph = JSON.parse(raw) as WorkflowGraph;
+      if (!validateGraph(graph)) {
+        res.status(400).json({ error: 'default-workflow.json is not a valid workflow graph' });
+        return;
+      }
+      res.json(graph);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to read default workflow', message);
+      res.status(500).json({ error: 'Failed to read default workflow', details: message });
     }
   });
 

@@ -23,3 +23,6 @@ yarn-error.log*
 
 # Scripts
 setup.sh
+
+# Local default workflow
+default-workflow.json
