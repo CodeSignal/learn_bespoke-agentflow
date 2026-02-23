@@ -1,0 +1,36 @@
+{
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "enabled": true,
+      "models": [
+        {
+          "id": "gpt-5",
+          "name": "GPT-5",
+          "reasoningEfforts": ["minimal", "low", "medium", "high"]
+        },
+        {
+          "id": "gpt-5-mini",
+          "name": "GPT-5 Mini",
+          "reasoningEfforts": ["low", "medium", "high"]
+        },
+        {
+          "id": "gpt-5-nano",
+          "name": "GPT-5 Nano",
+          "reasoningEfforts": ["low", "medium", "high"]
+        },
+        {
+          "id": "gpt-5.1",
+          "name": "GPT-5.1",
+          "reasoningEfforts": ["none", "low", "medium", "high"]
+        },
+        {
+          "id": "gpt-5.2",
+          "name": "GPT-5.2",
+          "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
+        }
+      ]
+    }
+  ]
+}

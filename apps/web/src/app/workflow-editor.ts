@@ -2,12 +2,12 @@
 // Bespoke Agent Builder - Client Logic
 
 import type { WorkflowGraph } from '@agentic/types';
-import { runWorkflowStream, resumeWorkflow } from '../services/api';
+import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
 
 const EXPANDED_NODE_WIDTH = 420;
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
-const MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
-const MODEL_EFFORTS = {
+const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
+const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
     'gpt-5': ['low', 'medium', 'high'],
     'gpt-5-mini': ['low', 'medium', 'high'],
     'gpt-5.1': ['none', 'low', 'medium', 'high']
@@ -15,6 +15,8 @@ const MODEL_EFFORTS = {
 
 export class WorkflowEditor {
     constructor() {
+        this.modelOptions = [...DEFAULT_MODEL_OPTIONS];
+        this.modelEfforts = { ...DEFAULT_MODEL_EFFORTS };
         this.nodes = [];
         this.connections = [];
         this.nextNodeId = 1;
@@ -66,6 +68,7 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
+        this.loadConfig();
         this.loadDefaultWorkflow();
     }
 
@@ -376,7 +379,7 @@ export class WorkflowEditor {
     renderEffortSelect(node) {
         const select = document.createElement('select');
         select.className = 'input ds-select';
-        const options = MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5'];
+        const options = this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || [];
         if (!options.includes(node.data.reasoningEffort)) {
             node.data.reasoningEffort = options[0];
         }
@@ -634,6 +637,26 @@ export class WorkflowEditor {
             this.render();
         } else if (updated) {
             this.updateRunButton();
+        }
+    }
+
+    async loadConfig() {
+        try {
+            const cfg = await fetchConfig();
+            const enabledProviders = (cfg.providers ?? []).filter(p => p.enabled);
+            if (enabledProviders.length === 0) return;
+            const options: string[] = [];
+            const efforts: Record<string, string[]> = {};
+            for (const provider of enabledProviders) {
+                for (const model of provider.models) {
+                    options.push(model.id);
+                    efforts[model.id] = model.reasoningEfforts;
+                }
+            }
+            this.modelOptions = options;
+            this.modelEfforts = efforts;
+        } catch {
+            // keep hardcoded defaults
         }
     }
 
@@ -939,8 +962,8 @@ export class WorkflowEditor {
             container.appendChild(modelDropdown);
             this.setupDropdown(
                 modelDropdown,
-                MODEL_OPTIONS.map(m => ({ value: m, label: m.toUpperCase() })),
-                node.data.model || MODEL_OPTIONS[0],
+                this.modelOptions.map(m => ({ value: m, label: m.toUpperCase() })),
+                node.data.model || this.modelOptions[0],
                 'Select model',
                 (value) => {
                     node.data.model = value;
@@ -954,7 +977,7 @@ export class WorkflowEditor {
             const effortDropdown = document.createElement('div');
             effortDropdown.className = 'ds-dropdown';
             container.appendChild(effortDropdown);
-            const effortOptions = (MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5']).map(optValue => ({
+            const effortOptions = (this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || []).map(optValue => ({
                 value: optValue,
                 label: optValue.charAt(0).toUpperCase() + optValue.slice(1)
             }));

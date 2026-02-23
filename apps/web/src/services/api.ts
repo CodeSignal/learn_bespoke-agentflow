@@ -105,6 +105,29 @@ export async function runWorkflowStream(
   return result;
 }
 
+export type ProviderModel = {
+  id: string;
+  name: string;
+  reasoningEfforts: string[];
+};
+
+export type Provider = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  models: ProviderModel[];
+};
+
+export type AppConfig = {
+  providers?: Provider[];
+};
+
+export async function fetchConfig(): Promise<AppConfig> {
+  const res = await fetch('/api/config');
+  if (!res.ok) return {};
+  return res.json() as Promise<AppConfig>;
+}
+
 export function resumeWorkflow(
   runId: string,
   input: ApprovalInput,

@@ -153,7 +153,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
   });
 
   router.get('/default-workflow', (_req: Request, res: Response) => {
-    const filePath = path.join(config.projectRoot, 'default-workflow.json');
+    const filePath = path.join(config.projectRoot, '.config', 'default-workflow.json');
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: 'No default workflow found' });
       return;
@@ -170,6 +170,22 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to read default workflow', message);
       res.status(500).json({ error: 'Failed to read default workflow', details: message });
+    }
+  });
+
+  router.get('/config', (_req: Request, res: Response) => {
+    const filePath = path.join(config.projectRoot, '.config', 'config.json');
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'No config found' });
+      return;
+    }
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      res.json(JSON.parse(raw));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to read config', message);
+      res.status(500).json({ error: 'Failed to read config', details: message });
     }
   });
 
