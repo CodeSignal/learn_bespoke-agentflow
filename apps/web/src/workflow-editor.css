@@ -545,6 +545,8 @@ path.connection-line.active {
     padding: var(--UI-Spacing-spacing-mxs) var(--UI-Spacing-spacing-ms);
     line-height: 1.4;
     font-size: var(--Fonts-Body-Default-xs);
+    max-width: 100%;
+    min-width: 0;
 }
 
 .chat-message.user {
@@ -607,6 +609,8 @@ path.connection-line.active {
 
 .chat-message > div:last-child {
     white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
 .chat-message .chat-message-label {

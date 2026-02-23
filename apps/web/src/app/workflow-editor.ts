@@ -1178,6 +1178,10 @@ export class WorkflowEditor {
         if (!this.chatMessages) return;
         const message = document.createElement('div');
         message.className = `chat-message ${role}`;
+        const normalizedText =
+            role === 'error' && !String(text).trim().toLowerCase().startsWith('error:')
+                ? `Error: ${text}`
+                : text;
         if (role === 'agent') {
             const label = document.createElement('span');
             label.className = 'chat-message-label';
@@ -1185,7 +1189,7 @@ export class WorkflowEditor {
             message.appendChild(label);
         }
         const body = document.createElement('div');
-        body.textContent = text;
+        body.textContent = normalizedText;
         message.appendChild(body);
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
@@ -1203,6 +1207,7 @@ export class WorkflowEditor {
     mapLogEntryToRole(entry) {
         const type = entry.type || '';
         if (type.includes('llm_response')) return 'agent';
+        if (type.includes('llm_error') || type === 'error') return 'error';
         if (type.includes('input_received') || type.includes('start_prompt')) return 'user';
         return null;
     }
@@ -1215,19 +1220,19 @@ export class WorkflowEditor {
     renderChatFromLogs(logs = []) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        let agentMessageShown = false;
+        let messageShown = false;
         logs.forEach(entry => {
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
-            if (role === 'agent' && !agentMessageShown) {
+            if ((role === 'agent' || role === 'error') && !messageShown) {
                 this.hideAgentSpinner();
-                agentMessageShown = true;
+                messageShown = true;
             }
             const text = this.formatLogContent(entry);
             if (!text) return;
             this.appendChatMessage(text, role);
         });
-        if (!agentMessageShown) {
+        if (!messageShown) {
             this.showAgentSpinner();
         }
     }
@@ -1272,6 +1277,9 @@ export class WorkflowEditor {
         if (result.logs) {
             this.renderChatFromLogs(result.logs);
         }
+        const hasLlmError = Array.isArray(result.logs)
+            ? result.logs.some(entry => (entry?.type || '').includes('llm_error'))
+            : false;
 
         if (result.status === 'paused' && result.waitingForInput) {
             this.currentRunId = result.runId;
@@ -1280,7 +1288,11 @@ export class WorkflowEditor {
             this.setWorkflowState('paused');
         } else if (result.status === 'completed') {
             this.clearApprovalMessage();
-            this.appendStatusMessage('Completed', 'completed');
+            if (hasLlmError) {
+                this.appendStatusMessage('Failed', 'failed');
+            } else {
+                this.appendStatusMessage('Completed', 'completed');
+            }
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;

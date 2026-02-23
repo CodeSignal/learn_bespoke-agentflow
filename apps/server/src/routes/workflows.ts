@@ -50,6 +50,14 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       return;
     }
 
+    const hasAgentNode = graph.nodes.some((node) => node.type === 'agent');
+    if (hasAgentNode && !llm) {
+      res.status(503).json({
+        error: 'OPENAI_API_KEY is required to run workflows with Agent nodes.'
+      });
+      return;
+    }
+
     try {
       const runId = Date.now().toString();
       const engine = new WorkflowEngine(graph, { runId, llm });
@@ -97,4 +105,3 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
 
   return router;
 }
-

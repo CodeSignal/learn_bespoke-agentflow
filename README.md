@@ -58,7 +58,7 @@ data/
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
-- **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, fallback to mock LLMs when no OpenAI key is present, and persist run records through `saveRunRecord()` into `data/runs/`.
+- **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, require an OpenAI-backed LLM for Agent nodes, and persist run records through `saveRunRecord()` into `data/runs/`.
 - **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
 

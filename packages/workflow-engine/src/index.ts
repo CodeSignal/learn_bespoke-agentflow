@@ -33,10 +33,9 @@ export interface WorkflowEngineInitOptions {
 
 const DEFAULT_REASONING = 'low';
 
-class MockLLM implements WorkflowLLM {
-  async respond(input: AgentInvocation): Promise<string> {
-    const toolSuffix = input.tools?.web_search ? ' (web search enabled)' : '';
-    return `Mock response for "${input.userContent || 'empty prompt'}" using ${input.model}${toolSuffix}.`;
+class MissingLLM implements WorkflowLLM {
+  async respond(): Promise<string> {
+    throw new Error('No LLM service configured. Set OPENAI_API_KEY in the environment.');
   }
 }
 
@@ -64,7 +63,7 @@ export class WorkflowEngine {
   constructor(graph: WorkflowGraph, options: WorkflowEngineInitOptions = {}) {
     this.graph = this.normalizeGraph(graph);
     this.runId = options.runId ?? Date.now().toString();
-    this.llm = options.llm ?? new MockLLM();
+    this.llm = options.llm ?? new MissingLLM();
     this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
     this.onLog = options.onLog;
   }
@@ -247,7 +246,15 @@ export class WorkflowEngine {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.log(node.id, 'error', message);
+      const lastLog = this.logs[this.logs.length - 1];
+      const isDuplicateLlmError =
+        lastLog &&
+        lastLog.nodeId === node.id &&
+        lastLog.type === 'llm_error' &&
+        lastLog.content === message;
+      if (!isDuplicateLlmError) {
+        this.log(node.id, 'error', message);
+      }
       this.status = 'failed';
     }
   }
@@ -331,7 +338,7 @@ export class WorkflowEngine {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log(node.id, 'llm_error', message);
-      return `LLM error: ${message}`;
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 
@@ -380,4 +387,3 @@ export class WorkflowEngine {
 }
 
 export default WorkflowEngine;
-
