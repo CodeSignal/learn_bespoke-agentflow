@@ -305,6 +305,8 @@ path.connection-line.active {
 }
 
 .node-header > span:first-child {
+    display: inline-flex;
+    align-items: center;
     flex: 1;
     min-width: 0;
     overflow: hidden;
