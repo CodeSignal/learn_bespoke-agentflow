@@ -74,6 +74,53 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     }
   });
 
+  router.post('/run-stream', async (req: Request, res: Response) => {
+    const { graph } = req.body as { graph?: WorkflowGraph };
+
+    if (!validateGraph(graph)) {
+      res.status(400).json({ error: 'Invalid workflow graph payload' });
+      return;
+    }
+
+    const hasAgentNode = graph.nodes.some((node) => node.type === 'agent');
+    if (hasAgentNode && !llm) {
+      res.status(503).json({
+        error: 'OPENAI_API_KEY is required to run workflows with Agent nodes.'
+      });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const sendEvent = (data: object) => {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const runId = Date.now().toString();
+      const engine = new WorkflowEngine(graph, {
+        runId,
+        llm,
+        onLog: (entry) => sendEvent({ type: 'log', entry })
+      });
+      addWorkflow(engine);
+
+      const result = await engine.run();
+      await persistResult(engine, result);
+
+      sendEvent({ type: 'done', result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to execute workflow stream', message);
+      sendEvent({ type: 'error', message });
+    } finally {
+      res.end();
+    }
+  });
+
   router.post('/resume', async (req: Request, res: Response) => {
     const { runId, input } = req.body as { runId?: string; input?: unknown };
     if (!runId) {

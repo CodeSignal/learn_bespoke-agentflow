@@ -1,4 +1,4 @@
-import type { ApprovalInput, WorkflowGraph, WorkflowRunResult } from '@agentic/types';
+import type { ApprovalInput, WorkflowGraph, WorkflowLogEntry, WorkflowRunResult } from '@agentic/types';
 
 type RequestOptions = {
   signal?: AbortSignal;
@@ -44,6 +44,65 @@ async function request<T>(url: string, body: unknown, options: RequestOptions = 
 
 export function runWorkflow(graph: WorkflowGraph, options: RequestOptions = {}): Promise<WorkflowRunResult> {
   return request<WorkflowRunResult>('/api/run', { graph }, options);
+}
+
+export async function runWorkflowStream(
+  graph: WorkflowGraph,
+  onLog: (entry: WorkflowLogEntry) => void,
+  options: RequestOptions = {}
+): Promise<WorkflowRunResult> {
+  const res = await fetch('/api/run-stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ graph }),
+    signal: options.signal
+  });
+
+  if (!res.ok) {
+    const text = await res.text();
+    try {
+      const payload = JSON.parse(text) as { error?: string; details?: string };
+      throw new Error(payload.error || payload.details || 'Request failed');
+    } catch {
+      throw new Error(text.trim() || 'Request failed');
+    }
+  }
+
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: WorkflowRunResult | null = null;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop()!;
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const parsed = JSON.parse(line.slice(6)) as {
+          type: string;
+          entry?: WorkflowLogEntry;
+          result?: WorkflowRunResult;
+          message?: string;
+        };
+        if (parsed.type === 'log' && parsed.entry) {
+          onLog(parsed.entry);
+        } else if (parsed.type === 'done' && parsed.result) {
+          result = parsed.result;
+        } else if (parsed.type === 'error') {
+          throw new Error(parsed.message || 'Workflow execution failed');
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (!result) throw new Error('Workflow stream ended without a result');
+  return result;
 }
 
 export function resumeWorkflow(
