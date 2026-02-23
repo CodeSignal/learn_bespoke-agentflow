@@ -39,6 +39,7 @@ export class WorkflowEditor {
         this.chatMessages = document.getElementById('chat-messages');
         this.initialPrompt = document.getElementById('initial-prompt');
         this.runButton = document.getElementById('btn-run');
+        this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle'; // 'idle' | 'running' | 'paused'
         this.rightPanel = document.getElementById('right-panel');
         this.pendingAgentMessage = null;
@@ -133,6 +134,12 @@ export class WorkflowEditor {
         if (this.canvasStage) {
             this.canvasStage.style.transform = `translate(${this.viewport.x}px, ${this.viewport.y}px) scale(${this.viewport.scale})`;
         }
+        this.updateZoomValue();
+    }
+
+    updateZoomValue() {
+        if (!this.zoomValue) return;
+        this.zoomValue.textContent = `${Math.round(this.viewport.scale * 100)}%`;
     }
 
     screenToWorld(clientX, clientY) {
@@ -262,9 +269,12 @@ export class WorkflowEditor {
         return select;
     }
 
-    zoomCanvas(factor) {
+    zoomCanvas(stepPercent) {
         if (!this.canvas) return;
-        const newScale = Math.min(2, Math.max(0.5, this.viewport.scale * factor));
+        const snappedScale = Math.round(this.viewport.scale * 10) / 10;
+        const delta = stepPercent / 100;
+        const newScale = Math.min(2, Math.max(0.5, snappedScale + delta));
+        if (newScale === this.viewport.scale) return;
         const rect = this.canvas.getBoundingClientRect();
         const screenX = rect.width / 2;
         const screenY = rect.height / 2;
@@ -273,11 +283,6 @@ export class WorkflowEditor {
         this.viewport.scale = newScale;
         this.viewport.x = screenX - worldX * this.viewport.scale;
         this.viewport.y = screenY - worldY * this.viewport.scale;
-        this.applyViewport();
-    }
-
-    resetViewport() {
-        this.viewport = { x: 0, y: 0, scale: 1 };
         this.applyViewport();
     }
 
@@ -409,10 +414,8 @@ export class WorkflowEditor {
 
         const zoomInBtn = document.getElementById('btn-zoom-in');
         const zoomOutBtn = document.getElementById('btn-zoom-out');
-        const zoomResetBtn = document.getElementById('btn-zoom-reset');
-        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomCanvas(1.2));
-        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoomCanvas(0.8));
-        if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.resetViewport());
+        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomCanvas(10));
+        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoomCanvas(-10));
     }
 
     initWebSocket() {

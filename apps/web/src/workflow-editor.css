@@ -2,7 +2,6 @@
     --node-width-min: 120px;
     --node-width-max: 280px;
     --node-width-expanded: 420px;
-    --sidebar-width: 260px;
     --right-sidebar-width: 320px;
 }
 
@@ -25,10 +24,8 @@ body {
 }
 
 
-/* Main Layout Override for 2-column structure */
+/* Split panel host */
 .main-layout {
-    display: grid;
-    grid-template-columns: 1fr var(--right-sidebar-width);
     height: 100vh;
     overflow: hidden;
 }
@@ -73,33 +70,6 @@ body {
 .palette-floating h3 {
     margin: 0 0 var(--UI-Spacing-spacing-s) 0;
     font-size: var(--Fonts-Body-Default-md);
-}
-
-.panel-resizer {
-    width: 6px;
-    cursor: col-resize;
-    background: transparent;
-    position: relative;
-    z-index: 4;
-    height: 100%;
-}
-
-.panel-resizer::after {
-    content: '';
-    position: absolute;
-    left: 50%;
-    top: 0;
-    bottom: 0;
-    width: 2px;
-    background: var(--Colors-Stroke-Default);
-    transform: translateX(-50%);
-    opacity: 0;
-    transition: opacity 0.2s ease;
-}
-
-.panel-resizer:hover::after,
-.panel-resizer.dragging::after {
-    opacity: 1;
 }
 
 /* Palette Items */
@@ -167,7 +137,6 @@ body {
     right: var(--UI-Spacing-spacing-ms);
     z-index: 5;
     display: flex;
-    gap: var(--UI-Spacing-spacing-xs);
 }
 
 .canvas-clear {
@@ -183,28 +152,57 @@ body {
     opacity: 0.9;
 }
 
-.canvas-controls button {
-    width: 48px;
+.zoom-control {
     height: 44px;
     border-radius: var(--UI-Radius-radius-mxl);
-    border: none;
-    font-size: var(--Fonts-Body-Default-xl);
-    color: var(--Colors-Text-Body-Strong);
-    background: var(--Colors-Backgrounds-Main-Top);
+    padding: 0 var(--UI-Spacing-spacing-mxs);
+    background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Strong) 82%, transparent);
     box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: var(--UI-Spacing-spacing-s);
+    border: 1px solid var(--Colors-Stroke-Default);
+}
+
+.zoom-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-xs);
+    color: var(--Colors-Text-Body-Default);
+    padding: 0 var(--UI-Spacing-spacing-xxs);
+    font-size: var(--Fonts-Body-Default-md);
+    font-weight: 600;
+}
+
+.zoom-label .icon {
+    color: var(--Colors-Text-Body-Secondary);
+}
+
+.zoom-stepper {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    border-radius: 50%;
+    font-size: var(--Fonts-Body-Default-xl);
+    line-height: 1;
     padding: 0;
 }
 
-.canvas-controls button:hover {
-    background: var(--Colors-Backgrounds-Main-Medium);
+.zoom-value {
+    font-size: var(--Fonts-Body-Default-md);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    width: 54px;
+    min-width: 54px;
+    text-align: center;
+    padding: 0;
+    font-variant-numeric: tabular-nums;
 }
 
-.canvas-controls button span {
-    line-height: 1;
-    font-weight: 600;
+.zoom-value:focus-visible,
+.zoom-stepper:focus-visible {
+    outline: 2px solid var(--Colors-Primary-Medium);
+    outline-offset: 1px;
 }
 
 /* SVG Connections */
