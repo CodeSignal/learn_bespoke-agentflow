@@ -105,6 +105,12 @@ body {
     cursor: grab;
 }
 
+@media (prefers-color-scheme: dark) {
+    #canvas-container {
+        background-image: radial-gradient(color-mix(in srgb, var(--Colors-Stroke-Default) 10%, transparent) 1px, transparent 1px);
+    }
+}
+
 #canvas-container.panning {
     cursor: grabbing;
 }
