@@ -849,7 +849,7 @@ export class WorkflowEditor {
         // Preview (Collapsed State)
         const preview = document.createElement('div');
         preview.className = 'node-preview';
-        preview.innerText = this.getNodePreviewText(node);
+        preview.innerHTML = this.getNodePreviewHTML(node);
         el.appendChild(preview);
 
         // Body (Form) - Only visible when expanded
@@ -893,16 +893,34 @@ export class WorkflowEditor {
         return `<span class="icon icon-primary"></span>${node.type}`;
     }
 
-    getNodePreviewText(node) {
+    getNodePreviewHTML(node) {
+        const TOOL_ICONS: Record<string, string> = { web_search: 'icon-globe' };
+
+        let text: string;
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim();
             const model = (node.data.model || 'gpt-5').toUpperCase();
-            return `${name} • ${model}`;
+            text = `${name} • ${model}`;
+        } else if (node.type === 'if') {
+            text = `Condition: ${node.data.condition || '...'}`;
+        } else if (node.type === 'approval') {
+            text = node.data.prompt || 'Approval message required';
+        } else if (node.type === 'start') {
+            text = 'Uses Initial Prompt';
+        } else {
+            text = 'Configure this node';
         }
-        if (node.type === 'if') return `Condition: ${node.data.condition || '...'} `;
-        if (node.type === 'approval') return node.data.prompt || 'Approval message required';
-        if (node.type === 'start') return 'Uses Initial Prompt';
-        return 'Configure this node';
+
+        const enabledToolIcons = node.type === 'agent'
+            ? Object.entries(node.data.tools || {})
+                .filter(([, enabled]) => enabled)
+                .map(([key]) => TOOL_ICONS[key])
+                .filter(Boolean)
+                .map(iconClass => `<span class="icon ${iconClass} icon-small node-preview-tool-icon"></span>`)
+                .join('')
+            : '';
+
+        return `<span class="node-preview-text">${text}</span>${enabledToolIcons}`;
     }
 
     // --- IN-NODE FORMS ---
@@ -1076,7 +1094,7 @@ export class WorkflowEditor {
         const el = document.getElementById(node.id);
         if(!el) return;
         const preview = el.querySelector('.node-preview');
-        if(preview) preview.innerText = this.getNodePreviewText(node);
+        if(preview) preview.innerHTML = this.getNodePreviewHTML(node);
     }
 
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---

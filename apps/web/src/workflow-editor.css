@@ -387,10 +387,24 @@ path.connection-line.active {
     padding: var(--UI-Spacing-spacing-mxs) var(--UI-Spacing-spacing-ms);
     font-size: var(--Fonts-Body-Default-xs);
     color: var(--Colors-Text-Body-Medium);
+    max-width: calc(var(--node-width-max) - var(--UI-Spacing-spacing-ms) * 2);
+    display: flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-xs);
+    overflow: hidden;
+}
+
+.node-preview-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: calc(var(--node-width-max) - var(--UI-Spacing-spacing-ms) * 2);
+    flex: 1;
+    min-width: 0;
+}
+
+.node-preview-tool-icon {
+    flex-shrink: 0;
+    opacity: 0.7;
 }
 
 .node.expanded .node-preview {
