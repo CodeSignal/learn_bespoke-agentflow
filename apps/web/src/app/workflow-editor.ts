@@ -3,6 +3,7 @@
 
 import type { WorkflowGraph } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
+import { renderMarkdown } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
@@ -1392,7 +1393,12 @@ export class WorkflowEditor {
             message.appendChild(label);
         }
         const body = document.createElement('div');
-        body.textContent = normalizedText;
+        if (role === 'agent') {
+            body.className = 'chat-message-body markdown';
+            body.innerHTML = renderMarkdown(normalizedText);
+        } else {
+            body.textContent = normalizedText;
+        }
         message.appendChild(body);
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;

@@ -626,6 +626,124 @@ path.connection-line.active {
     opacity: 0.8;
 }
 
+/* Markdown rendered inside agent chat messages.
+   Uses flex gap for ALL spacing — avoids any dependency on margins
+   or browser UA default margin-block resets. */
+.chat-message-body.markdown {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    font-size: var(--Fonts-Body-Default-xs);
+}
+
+/* Lists: flex column with gap so no UA margin-block defaults matter */
+.chat-message-body.markdown ul,
+.chat-message-body.markdown ol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    margin: 0;
+    padding: 0;
+    padding-left: var(--UI-Spacing-spacing-ml);
+}
+
+/* Headings */
+.chat-message-body.markdown h1,
+.chat-message-body.markdown h2,
+.chat-message-body.markdown h3,
+.chat-message-body.markdown h4 {
+    font-family: var(--heading-family);
+    font-weight: 600;
+    color: var(--Colors-Text-Body-Strong);
+    line-height: 1.3;
+    margin: 0;
+}
+.chat-message-body.markdown h1 { font-size: var(--Fonts-Body-Default-lg); }
+.chat-message-body.markdown h2 { font-size: var(--Fonts-Body-Default-md); }
+.chat-message-body.markdown h3,
+.chat-message-body.markdown h4 { font-size: var(--Fonts-Body-Default-sm); }
+
+/* Inline code */
+.chat-message-body.markdown code {
+    font-family: var(--code-family);
+    font-size: 0.9em;
+    background: var(--Colors-Backgrounds-Main-Strong);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-min);
+    padding: 1px 5px;
+}
+
+/* Code blocks */
+.chat-message-body.markdown pre {
+    background: var(--Colors-Backgrounds-Main-Strong);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    padding: var(--UI-Spacing-spacing-ms);
+    overflow-x: auto;
+    margin: 0;
+}
+.chat-message-body.markdown pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: var(--Fonts-Body-Default-xxs);
+    line-height: 1.5;
+}
+
+/* Blockquote */
+.chat-message-body.markdown blockquote {
+    border-left: 3px solid var(--Colors-Stroke-Strong);
+    padding: var(--UI-Spacing-spacing-xs) var(--UI-Spacing-spacing-ms);
+    color: var(--Colors-Text-Body-Medium);
+    margin: 0;
+}
+
+.chat-message-body.markdown a { color: var(--Colors-Primary-Medium); text-decoration: underline; }
+.chat-message-body.markdown strong { font-weight: 600; }
+.chat-message-body.markdown em { font-style: italic; }
+.chat-message-body.markdown hr { border: none; border-top: 1px solid var(--Colors-Stroke-Default); margin: 0; }
+
+/* Tables */
+.chat-message-body.markdown table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--Fonts-Body-Default-xs);
+}
+.chat-message-body.markdown th,
+.chat-message-body.markdown td {
+    border: 1px solid var(--Colors-Stroke-Default);
+    padding: var(--UI-Spacing-spacing-xxs) var(--UI-Spacing-spacing-xs);
+    text-align: left;
+}
+.chat-message-body.markdown th {
+    background: var(--Colors-Backgrounds-Main-Strong);
+    font-weight: 600;
+}
+
+/* Footnotes */
+.chat-message-body.markdown .md-footnotes {
+    font-size: var(--Fonts-Body-Default-xxs);
+    color: var(--Colors-Text-Body-Medium);
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+}
+.chat-message-body.markdown .md-footnotes ol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    margin: 0;
+    padding: 0;
+    padding-left: var(--UI-Spacing-spacing-ml);
+    list-style: none;
+}
+.chat-message-body.markdown .md-fn-ref {
+    font-size: 0.75em;
+    vertical-align: super;
+    color: var(--Colors-Primary-Medium);
+    line-height: 0;
+}
+
 .chat-message.system {
     align-self: center;
     background: transparent;
