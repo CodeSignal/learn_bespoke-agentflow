@@ -26,3 +26,8 @@ setup.sh
 
 # Local config
 .config/default-workflow.json
+
+# Environment files (safety net — never commit secrets)
+.env
+.env.local
+.env.*.local

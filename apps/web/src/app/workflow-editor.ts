@@ -68,8 +68,7 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
-        this.loadConfig();
-        this.loadDefaultWorkflow();
+        this.loadConfig().then(() => this.loadDefaultWorkflow());
     }
 
     async getDropdownCtor() {

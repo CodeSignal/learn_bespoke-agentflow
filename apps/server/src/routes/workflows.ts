@@ -68,6 +68,10 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const result = await engine.run();
       await persistResult(engine, result);
 
+      if (result.status !== 'paused') {
+        removeWorkflow(runId);
+      }
+
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -97,7 +101,11 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    let clientDisconnected = false;
+    req.on('close', () => { clientDisconnected = true; });
+
     const sendEvent = (data: object) => {
+      if (clientDisconnected) return;
       res.write(`data: ${JSON.stringify(data)}\n\n`);
     };
 
@@ -112,6 +120,10 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
 
       const result = await engine.run();
       await persistResult(engine, result);
+
+      if (result.status !== 'paused') {
+        removeWorkflow(runId);
+      }
 
       sendEvent({ type: 'done', result });
     } catch (error) {

@@ -27,13 +27,12 @@ async function request<T>(url: string, body: unknown, options: RequestOptions = 
 
     const text = await res.text();
     if (text) {
+      let parsed: { error?: string; details?: string; message?: string } | undefined;
       try {
-        const payload = JSON.parse(text) as { error?: string; details?: string; message?: string };
-        const message = payload.error || payload.details || payload.message;
-        throw new Error(message || text.trim());
-      } catch {
-        throw new Error(text.trim());
-      }
+        parsed = JSON.parse(text) as { error?: string; details?: string; message?: string };
+      } catch { /* not JSON */ }
+      const message = parsed?.error || parsed?.details || parsed?.message;
+      throw new Error(message || text.trim());
     }
 
     throw new Error('Request failed');
@@ -60,12 +59,11 @@ export async function runWorkflowStream(
 
   if (!res.ok) {
     const text = await res.text();
+    let parsed: { error?: string; details?: string } | undefined;
     try {
-      const payload = JSON.parse(text) as { error?: string; details?: string };
-      throw new Error(payload.error || payload.details || 'Request failed');
-    } catch {
-      throw new Error(text.trim() || 'Request failed');
-    }
+      parsed = JSON.parse(text) as { error?: string; details?: string };
+    } catch { /* not JSON */ }
+    throw new Error(parsed?.error || parsed?.details || text.trim() || 'Request failed');
   }
 
   const reader = res.body!.getReader();

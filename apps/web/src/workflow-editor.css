@@ -192,7 +192,7 @@ body {
     width: 28px;
     height: 28px;
     min-width: 28px;
-    border-radius: 50%;
+    border-radius: var(--UI-Radius-radius-max);
     font-size: var(--Fonts-Body-Default-xl);
     line-height: 1;
     padding: 0;
@@ -622,7 +622,6 @@ path.connection-line.active {
 .chat-message > div:last-child {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
-    word-break: break-word;
 }
 
 .chat-message .chat-message-label {
