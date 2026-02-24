@@ -3,9 +3,13 @@
 
 import type { WorkflowGraph } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
-import { renderMarkdown } from './markdown';
+import { renderMarkdown, escapeHtml } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
+
+const TOOLS_CONFIG: Array<{ key: string; label: string; iconClass: string }> = [
+    { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
+];
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
 const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
 const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
@@ -888,17 +892,15 @@ export class WorkflowEditor {
     }
 
     getNodePreviewHTML(node) {
-        const TOOL_ICONS: Record<string, string> = { web_search: 'icon-globe' };
-
         let text: string;
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim();
             const model = (node.data.model || 'gpt-5').toUpperCase();
-            text = `${name} • ${model}`;
+            text = `${escapeHtml(name)} • ${escapeHtml(model)}`;
         } else if (node.type === 'if') {
-            text = `Condition: ${node.data.condition || '...'}`;
+            text = `Condition: ${escapeHtml(node.data.condition || '...')}`;
         } else if (node.type === 'approval') {
-            text = node.data.prompt || 'Approval message required';
+            text = escapeHtml(node.data.prompt || 'Approval message required');
         } else if (node.type === 'start') {
             text = 'Uses Initial Prompt';
         } else {
@@ -906,11 +908,9 @@ export class WorkflowEditor {
         }
 
         const enabledToolIcons = node.type === 'agent'
-            ? Object.entries(node.data.tools || {})
-                .filter(([, enabled]) => enabled)
-                .map(([key]) => TOOL_ICONS[key])
-                .filter(Boolean)
-                .map(iconClass => `<span class="icon ${iconClass} icon-small node-preview-tool-icon"></span>`)
+            ? TOOLS_CONFIG
+                .filter(t => (node.data.tools || {})[t.key])
+                .map(t => `<span class="icon ${t.iconClass} icon-small node-preview-tool-icon"></span>`)
                 .join('')
             : '';
 
@@ -1009,11 +1009,7 @@ export class WorkflowEditor {
             const toolsList = document.createElement('div');
             toolsList.className = 'tools-checkbox-group';
 
-            const AVAILABLE_TOOLS = [
-                { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
-            ];
-
-            AVAILABLE_TOOLS.forEach(tool => {
+            TOOLS_CONFIG.forEach(tool => {
                 const label = document.createElement('label');
                 label.className = 'input-checkbox input-checkbox-small';
 
@@ -1038,16 +1034,12 @@ export class WorkflowEditor {
                 if (tool.iconClass) {
                     const icon = document.createElement('span');
                     icon.className = `icon ${tool.iconClass} icon-small`;
-                    icon.style.display = 'inline';
                     label.appendChild(icon);
                 }
 
                 const labelText = document.createElement('span');
                 labelText.className = 'input-checkbox-label';
                 labelText.textContent = tool.label;
-                labelText.style.display = 'inline';
-                labelText.style.margin = '0';
-                labelText.style.whiteSpace = 'nowrap';
                 label.appendChild(labelText);
 
                 toolsList.appendChild(label);

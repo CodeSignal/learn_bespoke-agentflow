@@ -14,7 +14,7 @@
 // Helpers
 // ---------------------------------------------------------------------------
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -48,10 +48,13 @@ function renderInline(raw: string, fn?: FootnoteCtx): string {
     // Italic
     out = out.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
     out = out.replace(/_([^_\n]+)_/g, '<em>$1</em>');
-    // Links
+    // Links — block javascript: / data: / vbscript: schemes to prevent XSS
     out = out.replace(
         /\[([^\]]+)\]\(([^)]+)\)/g,
-        '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>'
+        (_m, linkText: string, href: string) => {
+            const safeHref = /^(?:javascript|data|vbscript):/i.test(href.trim()) ? '#' : href;
+            return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+        }
     );
 
     return out;
@@ -187,7 +190,7 @@ export function renderMarkdown(input: string): string {
         (_m, _lang, code: string) => {
             const idx = codeBlocks.length;
             codeBlocks.push(`<pre><code>${escapeHtml(code.trimEnd())}</code></pre>`);
-            return `\x00CODE${idx}\x00`;
+            return `\uE000CODE${idx}\uE000`;
         }
     );
 
@@ -203,7 +206,7 @@ export function renderMarkdown(input: string): string {
         if (!trimmed.trim()) { i++; continue; }
 
         // Code block placeholder
-        const codeMatch = trimmed.match(/^\x00CODE(\d+)\x00$/);
+        const codeMatch = trimmed.match(/^\uE000CODE(\d+)\uE000$/);
         if (codeMatch) {
             blocks.push(codeBlocks[Number(codeMatch[1])]);
             i++;
@@ -274,7 +277,7 @@ export function renderMarkdown(input: string): string {
             !/^(#{1,4}|>|[-*+]|\d+\.)\s/.test(lines[i]) &&
             !/^[-*_]{3,}$/.test(lines[i].trim()) &&
             !/^\|/.test(lines[i].trim()) &&
-            !/^\x00CODE/.test(lines[i])
+            !/^\uE000CODE/.test(lines[i])
         ) {
             paraLines.push(lines[i]);
             i++;

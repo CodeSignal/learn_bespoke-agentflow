@@ -110,7 +110,7 @@ body {
         background-image: radial-gradient(color-mix(in srgb, var(--Colors-Stroke-Default) 10%, transparent) 1px, transparent 1px);
     }
 
-    .tool-list .tool-item.selected {
+    .tools-checkbox-group .input-checkbox.selected {
         background: color-mix(in srgb, var(--Colors-Tags-Primary) 35%, var(--Colors-Tags-Secondary));
     }
 }
@@ -511,6 +511,16 @@ path.connection-line.active {
     margin: 0;
 }
 
+.tools-checkbox-group .icon {
+    display: inline;
+}
+
+.tools-checkbox-group .input-checkbox-label {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
+}
+
 /* Right Sidebar - Chat Panel */
 .chat-panel {
     height: 100%;
@@ -666,11 +676,11 @@ path.connection-line.active {
 /* Inline code */
 .chat-message-body.markdown code {
     font-family: var(--code-family);
-    font-size: 0.9em;
+    font-size: var(--Fonts-Body-Default-xs);
     background: var(--Colors-Backgrounds-Main-Strong);
     border: 1px solid var(--Colors-Stroke-Default);
     border-radius: var(--UI-Radius-radius-min);
-    padding: 1px 5px;
+    padding: var(--UI-Spacing-spacing-min) var(--UI-Spacing-spacing-xxs);
 }
 
 /* Code blocks */
