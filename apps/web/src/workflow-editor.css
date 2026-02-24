@@ -233,7 +233,7 @@ body {
 
 path.connection-line {
     fill: none;
-    stroke: var(--Colors-Stroke-Default);
+    stroke: var(--Colors-Stroke-Stronger);
     stroke-width: 2px;
     transition: stroke 0.2s;
     pointer-events: none;
