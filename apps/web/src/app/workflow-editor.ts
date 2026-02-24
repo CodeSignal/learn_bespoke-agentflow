@@ -177,19 +177,14 @@ export class WorkflowEditor {
 
     getNodeWidth(node) {
         if (!node) return DEFAULT_NODE_WIDTH;
-        
-        // If expanded, use fixed expanded width
         if (node.data && !node.data.collapsed) {
             return EXPANDED_NODE_WIDTH;
         }
-        
-        // Try to get actual width from DOM
+        // For collapsed nodes, read the actual rendered width. Since there is no
+        // CSS width transition on .node, the class toggle is instant and
+        // offsetWidth forces a synchronous reflow that returns the correct value.
         const el = document.getElementById(node.id);
-        if (el) {
-            return el.offsetWidth || DEFAULT_NODE_WIDTH;
-        }
-        
-        return DEFAULT_NODE_WIDTH;
+        return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
     }
 
     setWorkflowState(state) {

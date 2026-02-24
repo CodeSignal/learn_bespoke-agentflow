@@ -273,7 +273,7 @@ path.connection-line.active {
     min-width: var(--node-width-min);
     max-width: var(--node-width-max);
     z-index: 2;
-    transition: box-shadow 0.2s, width 0.2s, min-width 0.2s, max-width 0.2s;
+    transition: box-shadow 0.2s;
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
