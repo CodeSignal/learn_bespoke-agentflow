@@ -882,7 +882,7 @@ export class WorkflowEditor {
     getNodeLabel(node) {
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim() || 'Agent';
-            return `<span class="icon icon-robot icon-primary"></span>${name}`;
+            return `<span class="icon icon-robot icon-primary"></span>${escapeHtml(name)}`;
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
         if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';

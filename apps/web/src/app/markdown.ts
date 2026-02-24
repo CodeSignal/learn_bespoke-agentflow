@@ -18,7 +18,9 @@ export function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
 
 interface FootnoteCtx {
@@ -159,7 +161,7 @@ function collectIndented(lines: string[], startIdx: number): string[] {
             break;
         }
         if (INDENT_UL.test(l) || INDENT_OL.test(l)) {
-            result.push(l.replace(/^\s{2,}|\t/, ''));
+            result.push(l.replace(/^  |\t/, ''));
             i++;
         } else {
             break;
