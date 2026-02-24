@@ -67,6 +67,8 @@ export class WorkflowEditor {
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
         this.modalCtorPromise = null;
+        this.stateReady = false;
+        this.saveTimer = null;
         this.initSplitPanelLayout();
 
         // Bindings
@@ -81,7 +83,21 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
-        this.loadConfig().then(() => this.loadDefaultWorkflow());
+        this.loadConfig().then(async () => {
+            await this.loadInitialWorkflow();
+            this.stateReady = true;
+            this.saveWorkflowState();
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (this.stateReady) {
+                if (this.saveTimer !== null) {
+                    clearTimeout(this.saveTimer);
+                    this.saveTimer = null;
+                }
+                this.saveWorkflowState();
+            }
+        });
     }
 
     async getDropdownCtor() {
@@ -704,6 +720,7 @@ export class WorkflowEditor {
             data: this.getDefaultData(normalizedType)
         };
         this.nodes.push(node);
+        this.scheduleSave();
         this.renderNode(node);
         this.updateRunButton();
     }
@@ -771,6 +788,47 @@ export class WorkflowEditor {
         } catch {
             // keep hardcoded defaults
         }
+    }
+
+    static get STORAGE_KEY() { return 'agentic-workflow'; }
+
+    saveWorkflowState() {
+        try {
+            localStorage.setItem(
+                WorkflowEditor.STORAGE_KEY,
+                JSON.stringify({ nodes: this.nodes, connections: this.connections }),
+            );
+        } catch {
+            // localStorage may be unavailable (private browsing quota, etc.) — fail silently
+        }
+    }
+
+    scheduleSave() {
+        if (!this.stateReady) return;
+        if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            this.saveWorkflowState();
+        }, 500);
+    }
+
+    async loadInitialWorkflow() {
+        // 1. Try localStorage first — restores the canvas on refresh
+        try {
+            const raw = localStorage.getItem(WorkflowEditor.STORAGE_KEY);
+            if (raw) {
+                const graph = JSON.parse(raw);
+                if (graph.nodes?.length) {
+                    this.loadWorkflow(graph);
+                    return; // localStorage wins — skip server fetch
+                }
+            }
+        } catch {
+            // corrupted storage — fall through to default workflow
+        }
+
+        // 2. Fall back to server default-workflow.json (first visit or after clear)
+        await this.loadDefaultWorkflow();
     }
 
     async loadDefaultWorkflow() {
@@ -865,6 +923,7 @@ export class WorkflowEditor {
         this.nodes.forEach(n => this.renderNode(n));
         this.renderConnections();
         this.updateRunButton();
+        this.scheduleSave();
     }
 
     renderNode(node) {
@@ -1089,6 +1148,7 @@ export class WorkflowEditor {
             userInput.value = node.data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
             userInput.addEventListener('input', (e) => {
                 node.data.userPrompt = e.target.value;
+                this.scheduleSave();
             });
             container.appendChild(userInput);
 
@@ -1127,6 +1187,7 @@ export class WorkflowEditor {
                 'Select effort',
                 (value) => {
                     node.data.reasoningEffort = value;
+                    this.scheduleSave();
                 }
             );
 
@@ -1252,6 +1313,7 @@ export class WorkflowEditor {
             pInput.placeholder = 'Message shown to user when approval is required';
             pInput.addEventListener('input', (e) => {
                 node.data.prompt = e.target.value;
+                this.scheduleSave();
             });
             container.appendChild(pInput);
 
@@ -1265,6 +1327,7 @@ export class WorkflowEditor {
         if(!el) return;
         const preview = el.querySelector('.node-preview');
         if(preview) preview.innerHTML = this.getNodePreviewHTML(node);
+        this.scheduleSave();
     }
 
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---
@@ -1454,6 +1517,7 @@ export class WorkflowEditor {
             path.addEventListener('mousedown', (e) => this.onConnectionLineMouseDown(e, conn, index));
             this.connectionsLayer.appendChild(path);
         });
+        this.scheduleSave();
     }
 
     getPathD(startX, startY, endX, endY) {
