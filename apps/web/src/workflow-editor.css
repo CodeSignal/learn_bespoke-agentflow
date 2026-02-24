@@ -482,41 +482,19 @@ path.connection-line.active {
     box-shadow: 0 0 0 4px var(--Colors-Shadow-Medium-Soft);
 }
 
-.tool-list {
-    border: 1px solid var(--Colors-Stroke-Default);
-    border-radius: var(--UI-Radius-radius-xs);
-    padding: var(--UI-Spacing-spacing-mxs);
-    max-height: 100px;
-    overflow-y: auto;
-    background: var(--Colors-Backgrounds-Main-Top);
+.tools-checkbox-group {
     display: flex;
     flex-direction: column;
     gap: var(--UI-Spacing-spacing-s);
+    padding: var(--UI-Spacing-spacing-mxs);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    background: var(--Colors-Backgrounds-Main-Top);
 }
 
-.tool-list .tool-item {
-    display: flex;
-    align-items: center;
-    gap: var(--UI-Spacing-spacing-s);
-    cursor: pointer;
-    font-size: var(--Fonts-Body-Default-sm);
-    color: var(--Colors-Text-Body-Default);
-}
-
-.tool-list .tool-tag {
-    width: fit-content;
-    border: none;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
-}
-
-.tool-list .tool-item:hover {
-    color: var(--Colors-Text-Body-Strong);
-}
-
-.tool-list .tool-item.selected .tool-item-icon {
-    color: var(--Colors-Primary-Medium);
+.tools-checkbox-group .input-checkbox {
+    display: flex; /* Override .node-form label { display: block } */
+    margin: 0;
 }
 
 /* Right Sidebar - Chat Panel */

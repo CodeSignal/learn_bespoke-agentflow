@@ -995,40 +995,50 @@ export class WorkflowEditor {
             // Tools
             container.appendChild(buildLabel('Tools'));
             const toolsList = document.createElement('div');
-            toolsList.className = 'tool-list';
+            toolsList.className = 'tools-checkbox-group';
 
-            const toolItems = [
+            const AVAILABLE_TOOLS = [
                 { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
             ];
 
-            toolItems.forEach(tool => {
-                const row = document.createElement('button');
-                row.type = 'button';
-                row.className = 'tool-item tool-tag tag secondary';
+            AVAILABLE_TOOLS.forEach(tool => {
+                const label = document.createElement('label');
+                label.className = 'input-checkbox input-checkbox-small';
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = Boolean(node.data.tools?.[tool.key]);
+                checkbox.addEventListener('change', () => {
+                    if (!node.data.tools) node.data.tools = {};
+                    node.data.tools[tool.key] = checkbox.checked;
+                    this.updatePreview(node);
+                });
+
+                const box = document.createElement('span');
+                box.className = 'input-checkbox-box';
+                const checkmark = document.createElement('span');
+                checkmark.className = 'input-checkbox-checkmark';
+                box.appendChild(checkmark);
+
+                label.appendChild(checkbox);
+                label.appendChild(box);
 
                 if (tool.iconClass) {
                     const icon = document.createElement('span');
-                    icon.className = `icon ${tool.iconClass} icon-small tool-item-icon`;
-                    row.appendChild(icon);
+                    icon.className = `icon ${tool.iconClass} icon-small`;
+                    icon.style.display = 'inline';
+                    label.appendChild(icon);
                 }
+
                 const labelText = document.createElement('span');
+                labelText.className = 'input-checkbox-label';
                 labelText.textContent = tool.label;
-                row.appendChild(labelText);
+                labelText.style.display = 'inline';
+                labelText.style.margin = '0';
+                labelText.style.whiteSpace = 'nowrap';
+                label.appendChild(labelText);
 
-                const setSelected = (selected) => {
-                    if (!node.data.tools) node.data.tools = {};
-                    node.data.tools[tool.key] = selected;
-                    row.classList.toggle('selected', selected);
-                    row.classList.toggle('secondary', !selected);
-                    row.setAttribute('aria-pressed', String(selected));
-                };
-
-                setSelected(Boolean(node.data.tools?.[tool.key]));
-                row.addEventListener('click', () => {
-                    setSelected(!Boolean(node.data.tools?.[tool.key]));
-                });
-
-                toolsList.appendChild(row);
+                toolsList.appendChild(label);
             });
 
             container.appendChild(toolsList);
