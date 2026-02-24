@@ -195,10 +195,8 @@ export class WorkflowEditor {
     setRunButtonHint(reason) {
         if (!this.runButton) return;
         if (reason) {
-            this.runButton.title = reason;
             this.runButton.setAttribute('data-disabled-hint', reason);
         } else {
-            this.runButton.removeAttribute('title');
             this.runButton.removeAttribute('data-disabled-hint');
         }
     }
