@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import type { Request, Response, Router } from 'express';
 import { Router as createRouter } from 'express';
 import type { WorkflowGraph, WorkflowRunRecord, WorkflowRunResult } from '@agentic/types';
@@ -50,6 +52,14 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       return;
     }
 
+    const hasAgentNode = graph.nodes.some((node) => node.type === 'agent');
+    if (hasAgentNode && !llm) {
+      res.status(503).json({
+        error: 'OPENAI_API_KEY is required to run workflows with Agent nodes.'
+      });
+      return;
+    }
+
     try {
       const runId = Date.now().toString();
       const engine = new WorkflowEngine(graph, { runId, llm });
@@ -58,11 +68,70 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const result = await engine.run();
       await persistResult(engine, result);
 
+      if (result.status !== 'paused') {
+        removeWorkflow(runId);
+      }
+
       res.json(result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to execute workflow', message);
       res.status(500).json({ error: 'Failed to execute workflow', details: message });
+    }
+  });
+
+  router.post('/run-stream', async (req: Request, res: Response) => {
+    const { graph } = req.body as { graph?: WorkflowGraph };
+
+    if (!validateGraph(graph)) {
+      res.status(400).json({ error: 'Invalid workflow graph payload' });
+      return;
+    }
+
+    const hasAgentNode = graph.nodes.some((node) => node.type === 'agent');
+    if (hasAgentNode && !llm) {
+      res.status(503).json({
+        error: 'OPENAI_API_KEY is required to run workflows with Agent nodes.'
+      });
+      return;
+    }
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    let clientDisconnected = false;
+    res.on('close', () => { clientDisconnected = true; });
+
+    const sendEvent = (data: object) => {
+      if (clientDisconnected) return;
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    };
+
+    try {
+      const runId = Date.now().toString();
+      const engine = new WorkflowEngine(graph, {
+        runId,
+        llm,
+        onLog: (entry) => sendEvent({ type: 'log', entry })
+      });
+      addWorkflow(engine);
+
+      const result = await engine.run();
+      await persistResult(engine, result);
+
+      if (result.status !== 'paused') {
+        removeWorkflow(runId);
+      }
+
+      sendEvent({ type: 'done', result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to execute workflow stream', message);
+      sendEvent({ type: 'error', message });
+    } finally {
+      res.end();
     }
   });
 
@@ -95,6 +164,42 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     }
   });
 
+  router.get('/default-workflow', (_req: Request, res: Response) => {
+    const filePath = path.join(config.projectRoot, '.config', 'default-workflow.json');
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'No default workflow found' });
+      return;
+    }
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      const graph = JSON.parse(raw) as WorkflowGraph;
+      if (!validateGraph(graph)) {
+        res.status(400).json({ error: 'default-workflow.json is not a valid workflow graph' });
+        return;
+      }
+      res.json(graph);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to read default workflow', message);
+      res.status(500).json({ error: 'Failed to read default workflow', details: message });
+    }
+  });
+
+  router.get('/config', (_req: Request, res: Response) => {
+    const filePath = path.join(config.projectRoot, '.config', 'config.json');
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'No config found' });
+      return;
+    }
+    try {
+      const raw = fs.readFileSync(filePath, 'utf-8');
+      res.json(JSON.parse(raw));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error('Failed to read config', message);
+      res.status(500).json({ error: 'Failed to read config', details: message });
+    }
+  });
+
   return router;
 }
-

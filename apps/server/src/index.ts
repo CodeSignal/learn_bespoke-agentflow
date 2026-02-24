@@ -23,7 +23,7 @@ async function bootstrap() {
     const client = new OpenAI({ apiKey: config.openAiApiKey });
     llmService = new OpenAILLMService(client);
   } else {
-    logger.warn('OPENAI_API_KEY missing. Falling back to mock LLM responses.');
+    logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
   }
 
   app.use('/api', createWorkflowRouter(llmService));
@@ -82,4 +82,3 @@ bootstrap().catch((error) => {
   logger.error('Failed to start server', error);
   process.exitCode = 1;
 });
-

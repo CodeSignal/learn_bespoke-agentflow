@@ -33,10 +33,9 @@ export interface WorkflowEngineInitOptions {
 
 const DEFAULT_REASONING = 'low';
 
-class MockLLM implements WorkflowLLM {
-  async respond(input: AgentInvocation): Promise<string> {
-    const toolSuffix = input.tools?.web_search ? ' (web search enabled)' : '';
-    return `Mock response for "${input.userContent || 'empty prompt'}" using ${input.model}${toolSuffix}.`;
+class MissingLLM implements WorkflowLLM {
+  async respond(): Promise<string> {
+    throw new Error('No LLM service configured. Set OPENAI_API_KEY in the environment.');
   }
 }
 
@@ -64,7 +63,7 @@ export class WorkflowEngine {
   constructor(graph: WorkflowGraph, options: WorkflowEngineInitOptions = {}) {
     this.graph = this.normalizeGraph(graph);
     this.runId = options.runId ?? Date.now().toString();
-    this.llm = options.llm ?? new MockLLM();
+    this.llm = options.llm ?? new MissingLLM();
     this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
     this.onLog = options.onLog;
   }
@@ -136,9 +135,9 @@ export class WorkflowEngine {
       const restored = this.state.pre_approval_output;
       if (restored !== undefined) {
         if (typeof restored === 'string') {
-          this.state.last_output = restored;
+          this.state.previous_output = restored;
         } else {
-          this.state.last_output = JSON.stringify(restored);
+          this.state.previous_output = JSON.stringify(restored);
         }
       }
       delete this.state.pre_approval_output;
@@ -147,7 +146,7 @@ export class WorkflowEngine {
       );
     } else {
       this.log(currentNode.id, 'input_received', JSON.stringify(input));
-      this.state.last_output = input ?? '';
+      this.state.previous_output = input ?? '';
       connection = this.graph.connections.find((c) => c.source === currentNode.id);
     }
 
@@ -219,7 +218,7 @@ export class WorkflowEngine {
           break;
         }
         case 'approval':
-          this.state.pre_approval_output = this.state.last_output;
+          this.state.pre_approval_output = this.state.previous_output;
           this.status = 'paused';
           this.waitingForInput = true;
           this.log(node.id, 'wait_input', 'Waiting for user approval');
@@ -231,7 +230,7 @@ export class WorkflowEngine {
           this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
       }
 
-      this.state.last_output = output;
+      this.state.previous_output = output;
       this.state[node.id] = output;
 
       const nextConnection = this.graph.connections.find((c) => c.source === node.id);
@@ -247,7 +246,15 @@ export class WorkflowEngine {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      this.log(node.id, 'error', message);
+      const lastLog = this.logs[this.logs.length - 1];
+      const isDuplicateLlmError =
+        lastLog &&
+        lastLog.nodeId === node.id &&
+        lastLog.type === 'llm_error' &&
+        lastLog.content === message;
+      if (!isDuplicateLlmError) {
+        this.log(node.id, 'error', message);
+      }
       this.status = 'failed';
     }
   }
@@ -273,7 +280,7 @@ export class WorkflowEngine {
 
   private evaluateIfNode(node: WorkflowNode): string | null {
     const condition = (node.data?.condition as string) || '';
-    const input = JSON.stringify(this.state.last_output || '');
+    const input = JSON.stringify(this.state.previous_output || '');
     const match = input.toLowerCase().includes(condition.toLowerCase());
     this.log(
       node.id,
@@ -292,25 +299,33 @@ export class WorkflowEngine {
   }
 
   private async executeAgentNode(node: WorkflowNode): Promise<string> {
-    const previousOutput = this.state.last_output;
-    let userContent = '';
+    const previousOutput = this.state.previous_output;
 
-    if (node.data?.userPrompt && typeof node.data.userPrompt === 'string' && node.data.userPrompt.trim()) {
-      userContent = node.data.userPrompt;
-    } else if (typeof previousOutput === 'string') {
-      userContent = previousOutput;
+    // Resolve previousOutput to a string for template substitution
+    let lastOutputStr = '';
+    if (typeof previousOutput === 'string') {
+      lastOutputStr = previousOutput;
     } else if (previousOutput !== undefined && previousOutput !== null) {
-      userContent = JSON.stringify(previousOutput);
+      lastOutputStr = JSON.stringify(previousOutput);
     }
 
+    // If the previous output was an approval object, use the last safe non-approval output
     if (
       previousOutput &&
       typeof previousOutput === 'object' &&
       ('decision' in (previousOutput as Record<string, unknown>) ||
         'note' in (previousOutput as Record<string, unknown>))
     ) {
-      const safe = this.findLastNonApprovalOutput();
-      userContent = safe || '';
+      lastOutputStr = this.findLastNonApprovalOutput() || '';
+    }
+
+    const userPrompt = node.data?.userPrompt;
+    let userContent: string;
+    if (userPrompt && typeof userPrompt === 'string' && userPrompt.trim()) {
+      userContent = userPrompt.replace(/\{\{PREVIOUS_OUTPUT\}\}/g, lastOutputStr);
+    } else {
+      // Backwards compatibility: empty userPrompt falls back to last output directly
+      userContent = lastOutputStr;
     }
 
     const invocation: AgentInvocation = {
@@ -331,7 +346,7 @@ export class WorkflowEngine {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.log(node.id, 'llm_error', message);
-      return `LLM error: ${message}`;
+      throw error instanceof Error ? error : new Error(message);
     }
   }
 
@@ -339,7 +354,7 @@ export class WorkflowEngine {
     const entries = Object.entries(this.state);
     for (let i = entries.length - 1; i >= 0; i -= 1) {
       const [key, value] = entries[i];
-      if (key.includes('_approval') || key === 'last_output' || key === 'pre_approval_output') {
+      if (key.includes('_approval') || key === 'previous_output' || key === 'pre_approval_output') {
         continue;
       }
       if (typeof value === 'string') {
@@ -380,4 +395,3 @@ export class WorkflowEngine {
 }
 
 export default WorkflowEngine;
-

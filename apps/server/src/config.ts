@@ -1,8 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import dotenv from 'dotenv';
-
-dotenv.config();
 
 const FALLBACK_ROOT = path.resolve(__dirname, '..', '..', '..');
 const PROJECT_ROOT = process.env.PROJECT_ROOT || FALLBACK_ROOT;
@@ -16,4 +13,3 @@ export const config = {
   projectRoot: PROJECT_ROOT,
   openAiApiKey: process.env.OPENAI_API_KEY ?? ''
 };
-

@@ -2,12 +2,12 @@
 // Bespoke Agent Builder - Client Logic
 
 import type { WorkflowGraph } from '@agentic/types';
-import { runWorkflow, resumeWorkflow } from '../services/api';
+import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
 
 const EXPANDED_NODE_WIDTH = 420;
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
-const MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
-const MODEL_EFFORTS = {
+const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
+const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
     'gpt-5': ['low', 'medium', 'high'],
     'gpt-5-mini': ['low', 'medium', 'high'],
     'gpt-5.1': ['none', 'low', 'medium', 'high']
@@ -15,6 +15,8 @@ const MODEL_EFFORTS = {
 
 export class WorkflowEditor {
     constructor() {
+        this.modelOptions = [...DEFAULT_MODEL_OPTIONS];
+        this.modelEfforts = { ...DEFAULT_MODEL_EFFORTS };
         this.nodes = [];
         this.connections = [];
         this.nextNodeId = 1;
@@ -39,24 +41,25 @@ export class WorkflowEditor {
         this.chatMessages = document.getElementById('chat-messages');
         this.initialPrompt = document.getElementById('initial-prompt');
         this.runButton = document.getElementById('btn-run');
+        this.cancelRunButton = document.getElementById('btn-cancel-run');
+        this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle'; // 'idle' | 'running' | 'paused'
         this.rightPanel = document.getElementById('right-panel');
-        this.rightResizer = document.getElementById('right-resizer');
         this.pendingAgentMessage = null;
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
-        this.confirmModal = document.getElementById('confirm-modal');
-        this.confirmTitle = document.getElementById('confirm-modal-title');
-        this.confirmMessage = document.getElementById('confirm-modal-message');
-        this.confirmConfirmBtn = document.getElementById('confirm-modal-confirm');
-        this.confirmCancelBtn = document.getElementById('confirm-modal-cancel');
-        this.confirmBackdrop = this.confirmModal ? this.confirmModal.querySelector('.modal-backdrop') : null;
+        this.activeRunController = null;
+        this.lastLlmResponseContent = null;
+
+        this.splitPanelCtorPromise = null;
+        this.dropdownCtorPromise = null;
+        this.modalCtorPromise = null;
+        this.initSplitPanelLayout();
 
         // Bindings
         this.initDragAndDrop();
         this.initCanvasInteractions();
         this.initButtons();
-        this.initPanelControls();
         
         // WebSocket for Logs
         this.initWebSocket();
@@ -65,8 +68,7 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
-
-        this.dropdownCtorPromise = null;
+        this.loadConfig().then(() => this.loadDefaultWorkflow());
     }
 
     async getDropdownCtor() {
@@ -76,6 +78,60 @@ export class WorkflowEditor {
             this.dropdownCtorPromise = import(/* @vite-ignore */ dropdownModulePath).then((mod) => mod.default);
         }
         return this.dropdownCtorPromise;
+    }
+
+    async getSplitPanelCtor() {
+        if (!this.splitPanelCtorPromise) {
+            const origin = window.location.origin;
+            const splitPanelModulePath = `${origin}/design-system/components/split-panel/split-panel.js`;
+            this.splitPanelCtorPromise = import(/* @vite-ignore */ splitPanelModulePath).then((mod) => mod.default);
+        }
+        return this.splitPanelCtorPromise;
+    }
+
+    async getModalCtor() {
+        if (!this.modalCtorPromise) {
+            const origin = window.location.origin;
+            const modalModulePath = `${origin}/design-system/components/modal/modal.js`;
+            this.modalCtorPromise = import(/* @vite-ignore */ modalModulePath).then((mod) => mod.default);
+        }
+        return this.modalCtorPromise;
+    }
+
+    async initSplitPanelLayout() {
+        const mainLayout = document.querySelector('.main-layout');
+        if (!mainLayout || !this.canvas || !this.rightPanel) return;
+
+        const rightWidthVar = getComputedStyle(document.documentElement)
+            .getPropertyValue('--right-sidebar-width')
+            .trim();
+        const rightWidth = Number.parseFloat(rightWidthVar) || 320;
+        const containerWidth = mainLayout.getBoundingClientRect().width || window.innerWidth || 1280;
+        const initialSplit = ((containerWidth - rightWidth) / containerWidth) * 100;
+        const clampedSplit = Math.max(40, Math.min(80, initialSplit));
+
+        try {
+            const SplitPanelCtor = await this.getSplitPanelCtor();
+            this.splitPanel = new SplitPanelCtor(mainLayout, {
+                initialSplit: clampedSplit,
+                minLeft: 40,
+                minRight: 20
+            });
+            this.splitPanel.getLeftPanel().appendChild(this.canvas);
+            this.splitPanel.getRightPanel().appendChild(this.rightPanel);
+
+            // Canvas now has correct dimensions — reposition the Start node if it's
+            // still the only node (i.e. no default-workflow.json was loaded yet or at all)
+            const startNode = this.nodes.find(n => n.type === 'start');
+            if (startNode && this.nodes.length === 1) {
+                const pos = this.getDefaultStartPosition();
+                startNode.x = pos.x;
+                startNode.y = pos.y;
+                this.render();
+            }
+        } catch (error) {
+            console.warn('Failed to initialize split panel layout', error);
+        }
     }
 
     async setupDropdown(container, items, selectedValue, placeholder, onSelect) {
@@ -94,6 +150,12 @@ export class WorkflowEditor {
         if (this.canvasStage) {
             this.canvasStage.style.transform = `translate(${this.viewport.x}px, ${this.viewport.y}px) scale(${this.viewport.scale})`;
         }
+        this.updateZoomValue();
+    }
+
+    updateZoomValue() {
+        if (!this.zoomValue) return;
+        this.zoomValue.textContent = `${Math.round(this.viewport.scale * 100)}%`;
     }
 
     screenToWorld(clientX, clientY) {
@@ -135,22 +197,132 @@ export class WorkflowEditor {
         this.updateRunButton();
     }
 
+    setRunButtonHint(reason) {
+        if (!this.runButton) return;
+        if (reason) {
+            this.runButton.title = reason;
+            this.runButton.setAttribute('data-disabled-hint', reason);
+        } else {
+            this.runButton.removeAttribute('title');
+            this.runButton.removeAttribute('data-disabled-hint');
+        }
+    }
+
+    isAbortError(error) {
+        if (!error) return false;
+        if (error.name === 'AbortError') return true;
+        const message = typeof error.message === 'string' ? error.message : '';
+        return message.toLowerCase().includes('aborted');
+    }
+
+    cancelRunningWorkflow() {
+        if (this.activeRunController) {
+            this.activeRunController.abort();
+            this.activeRunController = null;
+        }
+        if (this.workflowState === 'running') {
+            this.hideAgentSpinner();
+            this.clearApprovalMessage();
+            this.appendStatusMessage('Cancelled');
+            this.currentRunId = null;
+            this.setWorkflowState('idle');
+        }
+    }
+
+    getRunDisableReason() {
+        const startNodes = this.nodes.filter(node => node.type === 'start');
+        if (startNodes.length === 0) {
+            return 'Add a Start node to run the workflow.';
+        }
+        if (startNodes.length > 1) {
+            return 'Use only one Start node before running.';
+        }
+
+        const nodeIdSet = new Set(this.nodes.map(node => node.id));
+        const hasBrokenConnection = this.connections.some(
+            (conn) => !nodeIdSet.has(conn.source) || !nodeIdSet.has(conn.target)
+        );
+        if (hasBrokenConnection) {
+            return 'Fix broken connections before running.';
+        }
+
+        const startNode = startNodes[0];
+        const adjacency = new Map();
+        this.connections.forEach((conn) => {
+            if (!adjacency.has(conn.source)) adjacency.set(conn.source, []);
+            adjacency.get(conn.source).push(conn);
+        });
+
+        const startConnections = adjacency.get(startNode.id) || [];
+        if (startConnections.length === 0) {
+            return 'Connect Start to another node before running.';
+        }
+
+        const reachable = new Set([startNode.id]);
+        const queue = [startNode.id];
+        while (queue.length > 0) {
+            const nodeId = queue.shift();
+            const next = adjacency.get(nodeId) || [];
+            next.forEach((conn) => {
+                if (!reachable.has(conn.target)) {
+                    reachable.add(conn.target);
+                    queue.push(conn.target);
+                }
+            });
+        }
+
+        if (reachable.size <= 1) {
+            return 'Add and connect at least one node after Start.';
+        }
+
+        for (const node of this.nodes) {
+            if (!reachable.has(node.id)) continue;
+            if (node.type === 'if') {
+                const outgoing = adjacency.get(node.id) || [];
+                const hasTrue = outgoing.some((conn) => conn.sourceHandle === 'true');
+                const hasFalse = outgoing.some((conn) => conn.sourceHandle === 'false');
+                if (!hasTrue && !hasFalse) {
+                    return 'Connect at least one branch for each If / Else node.';
+                }
+            }
+            if (node.type === 'approval' || node.type === 'input') {
+                const outgoing = adjacency.get(node.id) || [];
+                const hasApprove = outgoing.some((conn) => conn.sourceHandle === 'approve');
+                const hasReject = outgoing.some((conn) => conn.sourceHandle === 'reject');
+                if (!hasApprove && !hasReject) {
+                    return 'Connect at least one branch for each approval node.';
+                }
+            }
+        }
+
+        return null;
+    }
+
     updateRunButton() {
         if (!this.runButton) return;
+        if (this.cancelRunButton) {
+            const showCancel = this.workflowState === 'running';
+            this.cancelRunButton.style.display = showCancel ? 'inline-flex' : 'none';
+            this.cancelRunButton.disabled = !showCancel;
+        }
         
         switch (this.workflowState) {
             case 'running':
                 this.runButton.textContent = 'Running...';
                 this.runButton.disabled = true;
+                this.setRunButtonHint('Workflow is currently running.');
                 break;
             case 'paused':
                 this.runButton.textContent = 'Paused';
                 this.runButton.disabled = true;
+                this.setRunButtonHint('Workflow is paused waiting for approval.');
                 break;
             case 'idle':
             default:
-                this.runButton.textContent = 'Run Workflow';
-                this.runButton.disabled = false;
+                const disabledReason = this.getRunDisableReason();
+                this.runButton.innerHTML = 'Run Workflow <span class="icon icon-rocket icon-small" aria-hidden="true"></span>';
+                this.runButton.disabled = Boolean(disabledReason);
+                this.setRunButtonHint(disabledReason);
                 break;
         }
     }
@@ -170,21 +342,21 @@ export class WorkflowEditor {
         this.runHistory.push({ role: 'user', content: text });
     }
 
-    showAgentSpinner() {
+    showAgentSpinner(name?: string) {
         if (!this.chatMessages) return;
         this.hideAgentSpinner();
-        const name = this.getPrimaryAgentName();
+        const resolvedName = name || this.getPrimaryAgentName();
         const spinner = document.createElement('div');
         spinner.className = 'chat-message agent spinner';
         const label = document.createElement('span');
         label.className = 'chat-message-label';
-        label.textContent = `${name} agent`;
+        label.textContent = resolvedName;
         spinner.appendChild(label);
         const body = document.createElement('div');
         body.className = 'chat-spinner-row';
         const text = document.createElement('span');
         text.className = 'chat-spinner-text';
-        text.textContent = `${name} is working`;
+        text.textContent = `${resolvedName} is working`;
         const dots = document.createElement('span');
         dots.className = 'chat-spinner';
         dots.innerHTML = '<span></span><span></span><span></span>';
@@ -206,7 +378,7 @@ export class WorkflowEditor {
     renderEffortSelect(node) {
         const select = document.createElement('select');
         select.className = 'input ds-select';
-        const options = MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5'];
+        const options = this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || [];
         if (!options.includes(node.data.reasoningEffort)) {
             node.data.reasoningEffort = options[0];
         }
@@ -223,9 +395,12 @@ export class WorkflowEditor {
         return select;
     }
 
-    zoomCanvas(factor) {
+    zoomCanvas(stepPercent) {
         if (!this.canvas) return;
-        const newScale = Math.min(2, Math.max(0.5, this.viewport.scale * factor));
+        const snappedScale = Math.round(this.viewport.scale * 10) / 10;
+        const delta = stepPercent / 100;
+        const newScale = Math.min(2, Math.max(0.5, snappedScale + delta));
+        if (newScale === this.viewport.scale) return;
         const rect = this.canvas.getBoundingClientRect();
         const screenX = rect.width / 2;
         const screenY = rect.height / 2;
@@ -234,11 +409,6 @@ export class WorkflowEditor {
         this.viewport.scale = newScale;
         this.viewport.x = screenX - worldX * this.viewport.scale;
         this.viewport.y = screenY - worldY * this.viewport.scale;
-        this.applyViewport();
-    }
-
-    resetViewport() {
-        this.viewport = { x: 0, y: 0, scale: 1 };
         this.applyViewport();
     }
 
@@ -341,6 +511,10 @@ export class WorkflowEditor {
 
     initButtons() {
         document.getElementById('btn-run').addEventListener('click', () => this.runWorkflow());
+        const cancelRunBtn = document.getElementById('btn-cancel-run');
+        if (cancelRunBtn) {
+            cancelRunBtn.addEventListener('click', () => this.cancelRunningWorkflow());
+        }
         document.getElementById('btn-clear').addEventListener('click', async () => {
             const confirmed = await this.openConfirmModal({
                 title: 'Clear Canvas',
@@ -370,38 +544,8 @@ export class WorkflowEditor {
 
         const zoomInBtn = document.getElementById('btn-zoom-in');
         const zoomOutBtn = document.getElementById('btn-zoom-out');
-        const zoomResetBtn = document.getElementById('btn-zoom-reset');
-        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomCanvas(1.2));
-        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoomCanvas(0.8));
-        if (zoomResetBtn) zoomResetBtn.addEventListener('click', () => this.resetViewport());
-    }
-
-    initPanelControls() {
-        if (this.rightResizer && this.rightPanel) {
-            let isDragging = false;
-
-            const onMouseMove = (e) => {
-                if (!isDragging) return;
-                const newWidth = Math.min(600, Math.max(240, window.innerWidth - e.clientX));
-                document.documentElement.style.setProperty('--right-sidebar-width', `${newWidth}px`);
-            };
-
-            const onMouseUp = () => {
-                if (!isDragging) return;
-                isDragging = false;
-                this.rightResizer.classList.remove('dragging');
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-            };
-
-            this.rightResizer.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                isDragging = true;
-                this.rightResizer.classList.add('dragging');
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            });
-        }
+        if (zoomInBtn) zoomInBtn.addEventListener('click', () => this.zoomCanvas(10));
+        if (zoomOutBtn) zoomOutBtn.addEventListener('click', () => this.zoomCanvas(-10));
     }
 
     initWebSocket() {
@@ -412,7 +556,7 @@ export class WorkflowEditor {
         };
     }
 
-    openConfirmModal(options = {}) {
+    async openConfirmModal(options = {}) {
         const {
             title = 'Confirm',
             message = 'Are you sure?',
@@ -420,48 +564,45 @@ export class WorkflowEditor {
             cancelLabel = 'Cancel'
         } = options;
 
-        if (!this.confirmModal || !this.confirmConfirmBtn || !this.confirmCancelBtn) {
-            return Promise.resolve(window.confirm(message));
+        try {
+            const ModalCtor = await this.getModalCtor();
+            const content = document.createElement('p');
+            content.textContent = message;
+
+            return await new Promise((resolve) => {
+                let confirmed = false;
+
+                const modal = new ModalCtor({
+                    size: 'small',
+                    title,
+                    content,
+                    footerButtons: [
+                        {
+                            label: cancelLabel,
+                            type: 'secondary',
+                            onClick: (_event, instance) => instance.close()
+                        },
+                        {
+                            label: confirmLabel,
+                            type: 'primary',
+                            onClick: (_event, instance) => {
+                                confirmed = true;
+                                instance.close();
+                            }
+                        }
+                    ],
+                    onClose: () => {
+                        modal.destroy();
+                        resolve(confirmed);
+                    }
+                });
+
+                modal.open();
+            });
+        } catch (error) {
+            console.warn('Failed to initialize DS confirm modal', error);
+            return window.confirm(message);
         }
-
-        if (this.confirmTitle) this.confirmTitle.textContent = title;
-        if (this.confirmMessage) this.confirmMessage.textContent = message;
-        this.confirmConfirmBtn.textContent = confirmLabel;
-        this.confirmCancelBtn.textContent = cancelLabel;
-
-        return new Promise((resolve) => {
-            const cleanup = () => {
-                this.confirmModal.style.display = 'none';
-                this.confirmConfirmBtn.removeEventListener('click', onConfirm);
-                this.confirmCancelBtn.removeEventListener('click', onCancel);
-                if (this.confirmBackdrop) {
-                    this.confirmBackdrop.removeEventListener('click', onCancel);
-                }
-                document.removeEventListener('keydown', onKeydown);
-            };
-
-            const onConfirm = () => {
-                cleanup();
-                resolve(true);
-            };
-
-            const onCancel = () => {
-                cleanup();
-                resolve(false);
-            };
-
-            const onKeydown = (event) => {
-                if (event.key === 'Escape') onCancel();
-            };
-
-            this.confirmModal.style.display = 'flex';
-            document.addEventListener('keydown', onKeydown);
-            this.confirmConfirmBtn.addEventListener('click', onConfirm);
-            this.confirmCancelBtn.addEventListener('click', onCancel);
-            if (this.confirmBackdrop) {
-                this.confirmBackdrop.addEventListener('click', onCancel);
-            }
-        });
     }
 
     // --- NODE MANAGEMENT ---
@@ -477,6 +618,7 @@ export class WorkflowEditor {
         };
         this.nodes.push(node);
         this.renderNode(node);
+        this.updateRunButton();
     }
 
     upgradeLegacyNodes(shouldRender = false) {
@@ -492,7 +634,52 @@ export class WorkflowEditor {
         });
         if (updated && shouldRender) {
             this.render();
+        } else if (updated) {
+            this.updateRunButton();
         }
+    }
+
+    async loadConfig() {
+        try {
+            const cfg = await fetchConfig();
+            const enabledProviders = (cfg.providers ?? []).filter(p => p.enabled);
+            if (enabledProviders.length === 0) return;
+            const options: string[] = [];
+            const efforts: Record<string, string[]> = {};
+            for (const provider of enabledProviders) {
+                for (const model of provider.models) {
+                    options.push(model.id);
+                    efforts[model.id] = model.reasoningEfforts;
+                }
+            }
+            this.modelOptions = options;
+            this.modelEfforts = efforts;
+        } catch {
+            // keep hardcoded defaults
+        }
+    }
+
+    async loadDefaultWorkflow() {
+        try {
+            const res = await fetch('/api/default-workflow');
+            if (!res.ok) return;
+            const graph = await res.json();
+            this.loadWorkflow(graph);
+        } catch {
+            // keep the default start node already rendered synchronously
+        }
+    }
+
+    loadWorkflow(graph) {
+        this.nodes = graph.nodes ?? [];
+        this.connections = graph.connections ?? [];
+        const maxId = this.nodes.reduce((max, n) => {
+            const num = parseInt(n.id.replace('node_', ''), 10);
+            return isNaN(num) ? max : Math.max(max, num);
+        }, 0);
+        this.nextNodeId = maxId + 1;
+        this.upgradeLegacyNodes();
+        this.render();
     }
 
     addDefaultStartNode() {
@@ -504,7 +691,7 @@ export class WorkflowEditor {
 
     getDefaultStartPosition() {
         const container = this.canvas;
-        const fallback = { x: 200, y: 200 };
+        const fallback = { x: 370, y: 310 };
         if (!container) return fallback;
         const rect = container.getBoundingClientRect();
         if (!rect.width || !rect.height) return fallback;
@@ -523,7 +710,7 @@ export class WorkflowEditor {
                 return { 
                     agentName: 'Agent',
                     systemPrompt: 'You are a helpful assistant.', 
-                    userPrompt: '',
+                    userPrompt: '{{PREVIOUS_OUTPUT}}',
                     model: 'gpt-5', 
                     reasoningEffort: 'low',
                     tools: { web_search: false },
@@ -550,6 +737,7 @@ export class WorkflowEditor {
         this.nodes = this.nodes.filter(n => n.id !== id);
         this.connections = this.connections.filter(c => c.source !== id && c.target !== id);
         this.render();
+        this.updateRunButton();
     }
 
     // --- RENDERING ---
@@ -559,6 +747,7 @@ export class WorkflowEditor {
         this.connectionsLayer.innerHTML = '';
         this.nodes.forEach(n => this.renderNode(n));
         this.renderConnections();
+        this.updateRunButton();
     }
 
     renderNode(node) {
@@ -615,7 +804,7 @@ export class WorkflowEditor {
             delBtn = document.createElement('button');
             delBtn.type = 'button';
             delBtn.className = 'button button-tertiary button-small icon-btn delete';
-            delBtn.innerHTML = '<span class="icon icon-theme-light-state-open icon-danger"></span>';
+            delBtn.innerHTML = '<span class="icon icon-trash icon-danger"></span>';
             delBtn.title = 'Delete Node';
             delBtn.addEventListener('mousedown', async (e) => {
                  e.stopPropagation(); 
@@ -695,7 +884,7 @@ export class WorkflowEditor {
     getNodeLabel(node) {
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim() || 'Agent';
-            return `<span class="icon icon-ai-and-machine-learning icon-primary"></span>${name}`;
+            return `<span class="icon icon-robot icon-primary"></span>${name}`;
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
         if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
@@ -746,6 +935,7 @@ export class WorkflowEditor {
             container.appendChild(buildLabel('System Prompt'));
             const sysInput = document.createElement('textarea');
             sysInput.className = 'input textarea-input';
+            sysInput.placeholder = 'Define the agent\'s role, persona, or instructions.';
             sysInput.value = node.data.systemPrompt || '';
             sysInput.addEventListener('input', (e) => {
                 node.data.systemPrompt = e.target.value;
@@ -753,12 +943,12 @@ export class WorkflowEditor {
             });
             container.appendChild(sysInput);
 
-            // User Prompt Override
-            container.appendChild(buildLabel('User Prompt Override (optional)'));
+            // Input
+            container.appendChild(buildLabel('Input'));
             const userInput = document.createElement('textarea');
             userInput.className = 'input textarea-input';
-            userInput.placeholder = 'If left empty, uses previous node output.';
-            userInput.value = node.data.userPrompt || '';
+            userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
+            userInput.value = node.data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
             userInput.addEventListener('input', (e) => {
                 node.data.userPrompt = e.target.value;
             });
@@ -771,8 +961,8 @@ export class WorkflowEditor {
             container.appendChild(modelDropdown);
             this.setupDropdown(
                 modelDropdown,
-                MODEL_OPTIONS.map(m => ({ value: m, label: m.toUpperCase() })),
-                node.data.model || MODEL_OPTIONS[0],
+                this.modelOptions.map(m => ({ value: m, label: m.toUpperCase() })),
+                node.data.model || this.modelOptions[0],
                 'Select model',
                 (value) => {
                     node.data.model = value;
@@ -786,7 +976,7 @@ export class WorkflowEditor {
             const effortDropdown = document.createElement('div');
             effortDropdown.className = 'ds-dropdown';
             container.appendChild(effortDropdown);
-            const effortOptions = (MODEL_EFFORTS[node.data.model] || MODEL_EFFORTS['gpt-5']).map(optValue => ({
+            const effortOptions = (this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || []).map(optValue => ({
                 value: optValue,
                 label: optValue.charAt(0).toUpperCase() + optValue.slice(1)
             }));
@@ -808,24 +998,36 @@ export class WorkflowEditor {
             toolsList.className = 'tool-list';
 
             const toolItems = [
-                { key: 'web_search', label: 'Web Search' }
+                { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
             ];
 
             toolItems.forEach(tool => {
-                const row = document.createElement('label');
-                row.className = 'tool-item';
-                const checkbox = document.createElement('input');
-                checkbox.type = 'checkbox';
-                checkbox.className = 'tool-checkbox';
-                checkbox.checked = node.data.tools?.[tool.key] || false;
-                checkbox.addEventListener('change', (e) => {
-                    if (!node.data.tools) node.data.tools = {};
-                    node.data.tools[tool.key] = e.target.checked;
-                });
-                row.appendChild(checkbox);
+                const row = document.createElement('button');
+                row.type = 'button';
+                row.className = 'tool-item tool-tag tag secondary';
+
+                if (tool.iconClass) {
+                    const icon = document.createElement('span');
+                    icon.className = `icon ${tool.iconClass} icon-small tool-item-icon`;
+                    row.appendChild(icon);
+                }
                 const labelText = document.createElement('span');
                 labelText.textContent = tool.label;
                 row.appendChild(labelText);
+
+                const setSelected = (selected) => {
+                    if (!node.data.tools) node.data.tools = {};
+                    node.data.tools[tool.key] = selected;
+                    row.classList.toggle('selected', selected);
+                    row.classList.toggle('secondary', !selected);
+                    row.setAttribute('aria-pressed', String(selected));
+                };
+
+                setSelected(Boolean(node.data.tools?.[tool.key]));
+                row.addEventListener('click', () => {
+                    setSelected(!Boolean(node.data.tools?.[tool.key]));
+                });
+
                 toolsList.appendChild(row);
             });
 
@@ -950,6 +1152,7 @@ export class WorkflowEditor {
             if(this.tempConnection) this.tempConnection.remove();
             this.connectionStart = null;
             this.tempConnection = null;
+            this.updateRunButton();
         } else if (this.reconnectingConnection !== null) {
             // Released without connecting to anything - connection already deleted, just clean up
             this.reconnectingConnection = null;
@@ -957,6 +1160,7 @@ export class WorkflowEditor {
             if(this.tempConnection) this.tempConnection.remove();
             this.connectionStart = null;
             this.tempConnection = null;
+            this.updateRunButton();
         }
     }
 
@@ -990,6 +1194,7 @@ export class WorkflowEditor {
         // Remove the original connection temporarily
         this.connections.splice(connIndex, 1);
         this.renderConnections();
+        this.updateRunButton();
         
         // Create temp connection for dragging
         this.tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -1151,35 +1356,37 @@ export class WorkflowEditor {
 
     // --- CHAT PANEL HELPERS ---
 
-    appendChatMessage(text, role = 'system') {
+    appendChatMessage(text, role = 'system', agentName?: string) {
         if (!this.chatMessages) return;
         const message = document.createElement('div');
         message.className = `chat-message ${role}`;
+        const normalizedText =
+            role === 'error' && !String(text).trim().toLowerCase().startsWith('error:')
+                ? `Error: ${text}`
+                : text;
         if (role === 'agent') {
             const label = document.createElement('span');
             label.className = 'chat-message-label';
-            label.textContent = this.getPrimaryAgentName();
+            label.textContent = agentName || this.getPrimaryAgentName();
             message.appendChild(label);
         }
         const body = document.createElement('div');
-        body.textContent = text;
+        body.textContent = normalizedText;
         message.appendChild(body);
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
 
-    startChatSession(promptText) {
+    startChatSession(_promptText) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        if (promptText && promptText.trim().length > 0) {
-            this.logManualUserMessage(promptText.trim());
-        }
         this.showAgentSpinner();
     }
 
     mapLogEntryToRole(entry) {
         const type = entry.type || '';
         if (type.includes('llm_response')) return 'agent';
+        if (type.includes('llm_error') || type === 'error') return 'error';
         if (type.includes('input_received') || type.includes('start_prompt')) return 'user';
         return null;
     }
@@ -1189,22 +1396,56 @@ export class WorkflowEditor {
         return typeof content === 'string' ? content : '';
     }
 
+    getAgentNameForNode(nodeId: string): string {
+        const node = this.nodes.find(n => n.id === nodeId);
+        return (node?.data?.agentName || '').trim() || 'Agent';
+    }
+
+    onLogEntry(entry) {
+        const type = entry.type || '';
+        if (type === 'step_start') {
+            const node = this.nodes.find(n => n.id === entry.nodeId);
+            if (node?.type === 'agent') {
+                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
+            }
+        } else if (type === 'start_prompt') {
+            // Only show the user's initial input (before any agent has responded)
+            if (entry.content && this.lastLlmResponseContent === null) {
+                this.hideAgentSpinner();
+                this.appendChatMessage(entry.content, 'user');
+                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
+            }
+        } else if (type === 'llm_response') {
+            this.hideAgentSpinner();
+            this.lastLlmResponseContent = entry.content ?? null;
+            this.appendChatMessage(entry.content || '', 'agent', this.getAgentNameForNode(entry.nodeId));
+        } else if (type === 'llm_error' || type === 'error') {
+            this.hideAgentSpinner();
+            this.appendChatMessage(entry.content || '', 'error');
+        }
+    }
+
     renderChatFromLogs(logs = []) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        let agentMessageShown = false;
+        this.lastLlmResponseContent = null;
+        let messageShown = false;
         logs.forEach(entry => {
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
-            if (role === 'agent' && !agentMessageShown) {
+            // Only show the user's initial input (before any agent has responded)
+            if (entry.type === 'start_prompt' && this.lastLlmResponseContent !== null) return;
+            if (entry.type === 'llm_response') this.lastLlmResponseContent = entry.content ?? null;
+            if ((role === 'agent' || role === 'error') && !messageShown) {
                 this.hideAgentSpinner();
-                agentMessageShown = true;
+                messageShown = true;
             }
             const text = this.formatLogContent(entry);
             if (!text) return;
-            this.appendChatMessage(text, role);
+            const agentName = role === 'agent' ? this.getAgentNameForNode(entry.nodeId) : undefined;
+            this.appendChatMessage(text, role, agentName);
         });
-        if (!agentMessageShown) {
+        if (!messageShown) {
             this.showAgentSpinner();
         }
     }
@@ -1224,6 +1465,7 @@ export class WorkflowEditor {
 
         this.currentPrompt = this.initialPrompt.value || '';
         this.startChatSession(this.currentPrompt);
+        this.lastLlmResponseContent = null;
 
         // Update Start Node with initial input
         startNode.data.initialInput = this.currentPrompt;
@@ -1232,23 +1474,37 @@ export class WorkflowEditor {
             nodes: this.nodes,
             connections: this.connections
         };
+        const controller = new AbortController();
+        this.activeRunController = controller;
 
         try {
-            const result = await runWorkflow(graph);
-            this.handleRunResult(result);
+            const result = await runWorkflowStream(
+                graph,
+                (entry) => this.onLogEntry(entry),
+                { signal: controller.signal }
+            );
+            this.handleRunResult(result, true);
 
         } catch (e) {
-            this.appendChatMessage('Error: ' + e.message, 'error');
+            if (this.isAbortError(e)) return;
+            this.appendChatMessage(e.message, 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+        } finally {
+            if (this.activeRunController === controller) {
+                this.activeRunController = null;
+            }
         }
     }
 
-    handleRunResult(result) {
-        if (result.logs) {
+    handleRunResult(result, fromStream = false) {
+        if (!fromStream && result.logs) {
             this.renderChatFromLogs(result.logs);
         }
+        const hasLlmError = Array.isArray(result.logs)
+            ? result.logs.some(entry => (entry?.type || '').includes('llm_error'))
+            : false;
 
         if (result.status === 'paused' && result.waitingForInput) {
             this.currentRunId = result.runId;
@@ -1257,7 +1513,11 @@ export class WorkflowEditor {
             this.setWorkflowState('paused');
         } else if (result.status === 'completed') {
             this.clearApprovalMessage();
-            this.appendStatusMessage('Completed', 'completed');
+            if (hasLlmError) {
+                this.appendStatusMessage('Failed', 'failed');
+            } else {
+                this.appendStatusMessage('Completed', 'completed');
+            }
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;
@@ -1283,15 +1543,22 @@ export class WorkflowEditor {
         this.replaceApprovalWithResult(decision, note);
         this.setWorkflowState('running');
         this.showAgentSpinner();
+        const controller = new AbortController();
+        this.activeRunController = controller;
         
         try {
-            const result = await resumeWorkflow(this.currentRunId, { decision, note });
+            const result = await resumeWorkflow(this.currentRunId, { decision, note }, { signal: controller.signal });
             this.handleRunResult(result);
         } catch (e) {
+            if (this.isAbortError(e)) return;
             this.appendChatMessage(e.message, 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+        } finally {
+            if (this.activeRunController === controller) {
+                this.activeRunController = null;
+            }
         }
     }
 }

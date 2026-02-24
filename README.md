@@ -11,6 +11,9 @@ apps/
 packages/
   types/             # Shared TypeScript contracts (nodes, graphs, run logs)
   workflow-engine/   # Reusable workflow executor w/ pluggable LLM interface
+.config/
+  config.json        # Provider + model definitions (committed)
+  default-workflow.json  # Optional startup workflow (gitignored)
 data/
   runs/              # JSON snapshots of each workflow execution
 ```
@@ -18,7 +21,7 @@ data/
 ## Key Features
 
 - **Visual Editor** – Canvas, floating palette, zoom controls, and inline node forms for prompts, branching rules, and approval copy.
-- **Run Console** – Chat-style stream that differentiates user prompts, agent turns, spinner states, and approval requests.
+- **Run Console** – Chat-style panel that renders agent responses progressively as they arrive via SSE, with per-agent labels, spinner states, and approval requests.
 - **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Responses API or mock).
 - **Persistent Audit Trail** – Every run writes `data/runs/run_<timestamp>.json` containing the workflow graph plus raw execution logs, independent of what the UI chooses to display.
 
@@ -28,7 +31,10 @@ data/
    ```bash
    npm install
    ```
-2. (Optional) create `.env` with `OPENAI_API_KEY=sk-...`. Without it the engine falls back to deterministic mock responses.
+2. Export your OpenAI API key in the shell:
+   ```bash
+   export OPENAI_API_KEY="sk-..."
+   ```
 3. Start the integrated dev server (Express + embedded Vite middleware on one port):
    ```bash
    npm run dev
@@ -52,10 +58,14 @@ data/
 | `npm run lint` | ESLint via the repo-level config. |
 | `npm run typecheck` | TypeScript in both apps. |
 
+## Run Readiness
+
+Workflow run preflight rules and blocking conditions are documented in `apps/web/docs/run-readiness.md`.
+
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
-- **Server (`apps/server`)**: Express routes `/api/run` + `/api/resume` hydrate `WorkflowEngine` instances, fallback to mock LLMs when no OpenAI key is present, and persist run records through `saveRunRecord()` into `data/runs/`.
+- **Server (`apps/server`)**: Five Express routes. `/api/run-stream` is the primary execution path — streams each `WorkflowLogEntry` as an SSE event so the UI renders progressively. `/api/run` is the same execution as a single JSON response. `/api/resume` continues paused approval workflows. `/api/config` serves `.config/config.json` (provider/model definitions). `/api/default-workflow` serves `.config/default-workflow.json` if present.
 - **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.
 

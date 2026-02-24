@@ -2,10 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkflowEngine = void 0;
 const DEFAULT_REASONING = 'low';
-class MockLLM {
-    async respond(input) {
-        const toolSuffix = input.tools?.web_search ? ' (web search enabled)' : '';
-        return `Mock response for "${input.userContent || 'empty prompt'}" using ${input.model}${toolSuffix}.`;
+class MissingLLM {
+    async respond() {
+        throw new Error('No LLM service configured. Set OPENAI_API_KEY in the environment.');
     }
 }
 class WorkflowEngine {
@@ -17,7 +16,7 @@ class WorkflowEngine {
         this.waitingForInput = false;
         this.graph = this.normalizeGraph(graph);
         this.runId = options.runId ?? Date.now().toString();
-        this.llm = options.llm ?? new MockLLM();
+        this.llm = options.llm ?? new MissingLLM();
         this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
         this.onLog = options.onLog;
     }
@@ -73,10 +72,10 @@ class WorkflowEngine {
             const restored = this.state.pre_approval_output;
             if (restored !== undefined) {
                 if (typeof restored === 'string') {
-                    this.state.last_output = restored;
+                    this.state.previous_output = restored;
                 }
                 else {
-                    this.state.last_output = JSON.stringify(restored);
+                    this.state.previous_output = JSON.stringify(restored);
                 }
             }
             delete this.state.pre_approval_output;
@@ -84,7 +83,7 @@ class WorkflowEngine {
         }
         else {
             this.log(currentNode.id, 'input_received', JSON.stringify(input));
-            this.state.last_output = input ?? '';
+            this.state.previous_output = input ?? '';
             connection = this.graph.connections.find((c) => c.source === currentNode.id);
         }
         if (connection) {
@@ -151,7 +150,7 @@ class WorkflowEngine {
                     break;
                 }
                 case 'approval':
-                    this.state.pre_approval_output = this.state.last_output;
+                    this.state.pre_approval_output = this.state.previous_output;
                     this.status = 'paused';
                     this.waitingForInput = true;
                     this.log(node.id, 'wait_input', 'Waiting for user approval');
@@ -162,7 +161,7 @@ class WorkflowEngine {
                 default:
                     this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
             }
-            this.state.last_output = output;
+            this.state.previous_output = output;
             this.state[node.id] = output;
             const nextConnection = this.graph.connections.find((c) => c.source === node.id);
             if (nextConnection) {
@@ -180,7 +179,14 @@ class WorkflowEngine {
         }
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            this.log(node.id, 'error', message);
+            const lastLog = this.logs[this.logs.length - 1];
+            const isDuplicateLlmError = lastLog &&
+                lastLog.nodeId === node.id &&
+                lastLog.type === 'llm_error' &&
+                lastLog.content === message;
+            if (!isDuplicateLlmError) {
+                this.log(node.id, 'error', message);
+            }
             this.status = 'failed';
         }
     }
@@ -204,7 +210,7 @@ class WorkflowEngine {
     }
     evaluateIfNode(node) {
         const condition = node.data?.condition || '';
-        const input = JSON.stringify(this.state.last_output || '');
+        const input = JSON.stringify(this.state.previous_output || '');
         const match = input.toLowerCase().includes(condition.toLowerCase());
         this.log(node.id, 'logic_check', `Condition "${condition}" evaluated as ${match ? 'true' : 'false'}`);
         const trueConn = this.graph.connections.find((c) => c.source === node.id && c.sourceHandle === 'true');
@@ -216,23 +222,27 @@ class WorkflowEngine {
         return null;
     }
     async executeAgentNode(node) {
-        const previousOutput = this.state.last_output;
-        let userContent = '';
-        if (node.data?.userPrompt && typeof node.data.userPrompt === 'string' && node.data.userPrompt.trim()) {
-            userContent = node.data.userPrompt;
-        }
-        else if (typeof previousOutput === 'string') {
-            userContent = previousOutput;
+        const previousOutput = this.state.previous_output;
+        let lastOutputStr = '';
+        if (typeof previousOutput === 'string') {
+            lastOutputStr = previousOutput;
         }
         else if (previousOutput !== undefined && previousOutput !== null) {
-            userContent = JSON.stringify(previousOutput);
+            lastOutputStr = JSON.stringify(previousOutput);
         }
         if (previousOutput &&
             typeof previousOutput === 'object' &&
             ('decision' in previousOutput ||
                 'note' in previousOutput)) {
-            const safe = this.findLastNonApprovalOutput();
-            userContent = safe || '';
+            lastOutputStr = this.findLastNonApprovalOutput() || '';
+        }
+        const userPrompt = node.data?.userPrompt;
+        let userContent;
+        if (userPrompt && typeof userPrompt === 'string' && userPrompt.trim()) {
+            userContent = userPrompt.replace(/\{\{PREVIOUS_OUTPUT\}\}/g, lastOutputStr);
+        }
+        else {
+            userContent = lastOutputStr;
         }
         const invocation = {
             systemPrompt: node.data?.systemPrompt || 'You are a helpful assistant.',
@@ -250,14 +260,14 @@ class WorkflowEngine {
         catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             this.log(node.id, 'llm_error', message);
-            return `LLM error: ${message}`;
+            throw error instanceof Error ? error : new Error(message);
         }
     }
     findLastNonApprovalOutput() {
         const entries = Object.entries(this.state);
         for (let i = entries.length - 1; i >= 0; i -= 1) {
             const [key, value] = entries[i];
-            if (key.includes('_approval') || key === 'last_output' || key === 'pre_approval_output') {
+            if (key.includes('_approval') || key === 'previous_output' || key === 'pre_approval_output') {
                 continue;
             }
             if (typeof value === 'string') {
