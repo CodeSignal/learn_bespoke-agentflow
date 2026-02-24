@@ -102,7 +102,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     res.flushHeaders();
 
     let clientDisconnected = false;
-    req.on('close', () => { clientDisconnected = true; });
+    res.on('close', () => { clientDisconnected = true; });
 
     const sendEvent = (data: object) => {
       if (clientDisconnected) return;
