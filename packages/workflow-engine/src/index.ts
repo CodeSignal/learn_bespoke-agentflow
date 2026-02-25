@@ -204,10 +204,10 @@ export class WorkflowEngine {
 
     this.state.previous_output = previousOutput;
 
-    await Promise.all([
-      this.processConnections(currentNode.id, connections, previousOutput),
-      this.drainDeferredNodes()
-    ]);
+    await this.processConnections(currentNode.id, connections, previousOutput);
+    if (this.status === 'running') {
+      await this.drainDeferredNodes();
+    }
     if (this.status === 'running') {
       const nextPendingApprovalNodeId = this.dequeuePendingApproval();
       if (nextPendingApprovalNodeId) {
@@ -252,14 +252,18 @@ export class WorkflowEngine {
     }
   }
 
-  private async processNode(node: WorkflowNode, previousOutput: unknown = this.state.previous_output): Promise<void> {
+  private async processNode(
+    node: WorkflowNode,
+    previousOutput: unknown = this.state.previous_output,
+    writeSharedPreviousOutput = true
+  ): Promise<unknown> {
     if (this.status !== 'running') {
       if (this.status === 'paused' && this.waitingForInput && node.type === 'approval') {
         this.setApprovalContext(node.id, previousOutput);
         this.enqueuePendingApproval(node.id);
         this.log(node.id, 'wait_input', 'Waiting for user approval');
       }
-      return;
+      return undefined;
     }
 
     this.log(node.id, 'step_start', this.describeNode(node));
@@ -276,37 +280,40 @@ export class WorkflowEngine {
           break;
         case 'if': {
           const nextConnections = this.evaluateIfNodeConnections(node, previousOutput);
-          await this.processConnections(node.id, nextConnections, previousOutput);
-          return;
+          await this.processConnections(node.id, nextConnections, previousOutput, writeSharedPreviousOutput);
+          return undefined;
         }
         case 'approval':
           this.setApprovalContext(node.id, previousOutput);
           if (this.waitingForInput) {
             this.enqueuePendingApproval(node.id);
             this.log(node.id, 'wait_input', 'Waiting for user approval');
-            return;
+            return undefined;
           }
           this.state.pre_approval_output = previousOutput;
           this.currentNodeId = node.id;
           this.status = 'paused';
           this.waitingForInput = true;
           this.log(node.id, 'wait_input', 'Waiting for user approval');
-          return;
+          return undefined;
         case 'end':
-          return;
+          return undefined;
         default:
           this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
       }
 
       if (this.shouldSkipPostNodePropagation()) {
-        return;
+        return undefined;
       }
 
-      this.state.previous_output = output;
+      if (writeSharedPreviousOutput) {
+        this.state.previous_output = output;
+      }
       this.state[node.id] = output;
 
       const nextConnections = this.graph.connections.filter((c) => c.source === node.id);
-      await this.processConnections(node.id, nextConnections, output);
+      await this.processConnections(node.id, nextConnections, output, writeSharedPreviousOutput);
+      return output;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const lastLog = this.logs[this.logs.length - 1];
@@ -319,13 +326,15 @@ export class WorkflowEngine {
         this.log(node.id, 'error', message);
       }
       this.status = 'failed';
+      return undefined;
     }
   }
 
   private async processConnections(
     sourceNodeId: string,
     connections: WorkflowConnection[],
-    previousOutput: unknown
+    previousOutput: unknown,
+    writeSharedPreviousOutput = true
   ): Promise<void> {
     if (connections.length === 0) {
       return;
@@ -353,11 +362,11 @@ export class WorkflowEngine {
     }
 
     if (nextNodes.length === 1) {
-      await this.processNode(nextNodes[0], previousOutput);
+      await this.processNode(nextNodes[0], previousOutput, writeSharedPreviousOutput);
       return;
     }
 
-    await Promise.all(nextNodes.map((nextNode) => this.processNode(nextNode, previousOutput)));
+    await Promise.all(nextNodes.map((nextNode) => this.processNode(nextNode, previousOutput, false)));
   }
 
   private deferConnections(
@@ -665,12 +674,17 @@ export class WorkflowEngine {
   }
 
   private shouldSkipPostNodePropagation(): boolean {
+    if (this.status === 'running') {
+      return false;
+    }
     if (this.status === 'failed' || this.status === 'completed') {
       return true;
     }
     if (this.status === 'paused' && !this.waitingForInput) {
       return true;
     }
+    // Keep propagation active for paused + waitingForInput so processConnections
+    // can defer downstream branches that have not executed yet.
     return false;
   }
 }

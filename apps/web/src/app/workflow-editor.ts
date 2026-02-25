@@ -2177,16 +2177,6 @@ export class WorkflowEditor {
         this.pendingApprovalRequest.rejectBtn.disabled = disabled;
     }
 
-    getApprovalNextNodes(nodeId: string, decision: 'approve' | 'reject'): EditorNode[] {
-        const targetNodeIds = new Set(
-            this.getRunConnections()
-                .filter((conn: any) => conn.source === nodeId && conn.sourceHandle === decision)
-                .map((conn: any) => conn.target)
-        );
-        if (targetNodeIds.size === 0) return [];
-        return this.getRunNodes().filter((node: any) => targetNodeIds.has(node.id));
-    }
-
     extractWaitingNodeId(logs: any = []) {
         if (!Array.isArray(logs)) return null;
         for (let i = logs.length - 1; i >= 0; i -= 1) {
@@ -2561,7 +2551,7 @@ export class WorkflowEditor {
                 (entry: any) => this.onLogEntry(entry),
                 { signal: controller.signal }
             );
-            this.handleRunResult(result);
+            this.handleRunResult(result, true);
         } catch (e) {
             if (this.isAbortError(e)) return;
             this.appendChatMessage(this.getErrorMessage(e), 'error');

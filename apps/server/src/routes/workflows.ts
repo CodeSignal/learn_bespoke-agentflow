@@ -59,6 +59,21 @@ function setEngineOnLog(
 
 export function createWorkflowRouter(llm?: WorkflowLLM): Router {
   const router = createRouter();
+  const activeResumeModes = new Map<string, 'stream' | 'json'>();
+
+  const tryAcquireResumeLock = (runId: string, mode: 'stream' | 'json'): boolean => {
+    if (activeResumeModes.has(runId)) {
+      return false;
+    }
+    activeResumeModes.set(runId, mode);
+    return true;
+  };
+
+  const releaseResumeLock = (runId: string, mode: 'stream' | 'json'): void => {
+    if (activeResumeModes.get(runId) === mode) {
+      activeResumeModes.delete(runId);
+    }
+  };
 
   router.post('/run', async (req: Request, res: Response) => {
     const { graph } = req.body as { graph?: WorkflowGraph };
@@ -167,6 +182,10 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       res.status(404).json({ error: 'Run ID not found' });
       return;
     }
+    if (!tryAcquireResumeLock(runId, 'stream')) {
+      res.status(409).json({ error: 'Run is already being resumed. Use a single resume endpoint per run.' });
+      return;
+    }
 
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -199,6 +218,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       logger.error('Failed to resume workflow stream', message);
       sendEvent({ type: 'error', message });
     } finally {
+      releaseResumeLock(runId, 'stream');
       setEngineOnLog(engine);
       res.end();
     }
@@ -214,6 +234,10 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     const engine = getWorkflow(runId);
     if (!engine) {
       res.status(404).json({ error: 'Run ID not found' });
+      return;
+    }
+    if (!tryAcquireResumeLock(runId, 'json')) {
+      res.status(409).json({ error: 'Run is already being resumed. Use a single resume endpoint per run.' });
       return;
     }
 
@@ -232,6 +256,8 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to resume workflow', message);
       res.status(500).json({ error: 'Failed to resume workflow', details: message });
+    } finally {
+      releaseResumeLock(runId, 'json');
     }
   });
 
