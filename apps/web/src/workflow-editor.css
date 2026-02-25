@@ -436,6 +436,20 @@ path.connection-line.active {
 .port-true { top: 45px; border-color: var(--Colors-Alert-Success-Default); }
 .port-false { top: 75px; border-color: var(--Colors-Alert-Error-Default); }
 .port-condition { border-color: var(--Colors-Primary-Medium); }
+.port-condition-aggregate {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    right: -8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-size: 8px;
+    font-weight: 700;
+    color: var(--Colors-Primary-Medium);
+    line-height: 1;
+}
 .port-condition-fallback { border-color: var(--Colors-Alert-Error-Default); }
 
 /* Form Styles inside Node */

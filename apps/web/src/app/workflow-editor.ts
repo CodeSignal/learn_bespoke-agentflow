@@ -20,6 +20,8 @@ const IF_CONDITION_HANDLE_PREFIX = 'condition-';
 const IF_FALLBACK_HANDLE = 'false';
 const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
+const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
+const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
 const IF_CONDITION_OPERATORS = [
     { value: 'equal', label: 'Equal' },
     { value: 'contains', label: 'Contains' }
@@ -470,6 +472,17 @@ export class WorkflowEditor {
         return IF_PORT_BASE_TOP + (index * IF_PORT_STEP);
     }
 
+    shouldAggregateCollapsedIfPorts(node: EditorNode): boolean {
+        return node.type === 'if' && Boolean(node.data?.collapsed) && this.getIfConditions(node).length > 1;
+    }
+
+    refreshNodePorts(node: EditorNode): void {
+        const el = document.getElementById(node.id);
+        if (!el) return;
+        el.querySelectorAll('.port').forEach((port) => port.remove());
+        this.renderPorts(node, el);
+    }
+
     getIfConditions(node: EditorNode): IfCondition[] {
         if (!node.data) node.data = {};
         if (!Array.isArray(node.data.conditions) || node.data.conditions.length === 0) {
@@ -514,6 +527,15 @@ export class WorkflowEditor {
 
     getOutputPortCenterYOffset(node: EditorNode, sourceHandle?: string): number {
         if (node.type === 'if') {
+            if (this.shouldAggregateCollapsedIfPorts(node)) {
+                if (sourceHandle === IF_FALLBACK_HANDLE) {
+                    return IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP + 6;
+                }
+                const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
+                if (conditionIndex !== null) {
+                    return IF_COLLAPSED_MULTI_CONDITION_PORT_TOP + 6;
+                }
+            }
             if (sourceHandle === IF_FALLBACK_HANDLE) {
                 return this.getIfPortTop(this.getIfConditions(node).length) + 6;
             }
@@ -1202,6 +1224,7 @@ export class WorkflowEditor {
                 e.stopPropagation();
                 node.data.collapsed = !node.data.collapsed;
                 updateCollapseIcon();
+                this.refreshNodePorts(node);
                 this.renderConnections();
             });
             controls.appendChild(collapseBtn);
@@ -1249,6 +1272,7 @@ export class WorkflowEditor {
             e.stopPropagation();
             node.data.collapsed = !node.data.collapsed;
             updateCollapseIcon();
+            this.refreshNodePorts(node);
             this.renderConnections();
         });
 
@@ -1584,29 +1608,52 @@ export class WorkflowEditor {
         if (node.type !== 'end') {
             if (node.type === 'if') {
                 const conditions = this.getIfConditions(node);
-                conditions.forEach((condition: any, index: any) => {
-                    const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
-                    const conditionValue = condition.value || '';
-                    const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                if (this.shouldAggregateCollapsedIfPorts(node)) {
+                    const title = `${conditions.length} condition branches (expand to wire specific branches)`;
+                    const aggregateConditionPort = this.createPort(
+                        node.id,
+                        this.getIfConditionHandle(0),
+                        'port-out port-condition port-condition-aggregate',
+                        title,
+                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP
+                    );
+                    aggregateConditionPort.textContent = String(conditions.length);
+                    aggregateConditionPort.setAttribute('aria-label', `${conditions.length} conditions`);
+                    el.appendChild(aggregateConditionPort);
                     el.appendChild(
                         this.createPort(
                             node.id,
-                            this.getIfConditionHandle(index),
-                            'port-out port-condition',
-                            title,
-                            this.getIfPortTop(index)
+                            IF_FALLBACK_HANDLE,
+                            'port-out port-condition-fallback',
+                            'False fallback',
+                            IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP
                         )
                     );
-                });
-                el.appendChild(
-                    this.createPort(
-                        node.id,
-                        IF_FALLBACK_HANDLE,
-                        'port-out port-condition-fallback',
-                        'False fallback',
-                        this.getIfPortTop(conditions.length)
-                    )
-                );
+                } else {
+                    conditions.forEach((condition: any, index: any) => {
+                        const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
+                        const conditionValue = condition.value || '';
+                        const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                        el.appendChild(
+                            this.createPort(
+                                node.id,
+                                this.getIfConditionHandle(index),
+                                'port-out port-condition',
+                                title,
+                                this.getIfPortTop(index)
+                            )
+                        );
+                    });
+                    el.appendChild(
+                        this.createPort(
+                            node.id,
+                            IF_FALLBACK_HANDLE,
+                            'port-out port-condition-fallback',
+                            'False fallback',
+                            this.getIfPortTop(conditions.length)
+                        )
+                    );
+                }
             } else if (node.type === 'approval') {
                 el.appendChild(this.createPort(node.id, 'approve', 'port-out port-true', 'Approve'));
                 el.appendChild(this.createPort(node.id, 'reject', 'port-out port-false', 'Reject'));
