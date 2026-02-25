@@ -1832,7 +1832,8 @@ export class WorkflowEditor {
                         this.getIfConditionHandle(0),
                         'port-out port-condition port-condition-aggregate',
                         title,
-                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP
+                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP,
+                        false
                     );
                     aggregateConditionPort.textContent = String(conditions.length);
                     aggregateConditionPort.setAttribute('aria-label', `${conditions.length} conditions`);
@@ -1880,19 +1881,29 @@ export class WorkflowEditor {
         }
     }
 
-    createPort(nodeId: string, handle: string, className: string, title = '', top: number | null = null): HTMLDivElement {
+    createPort(
+        nodeId: string,
+        handle: string,
+        className: string,
+        title = '',
+        top: number | null = null,
+        connectable = true
+    ): HTMLDivElement {
         const port = document.createElement('div');
-        port.className = `port ${className}`;
+        port.className = `port ${className}${connectable ? '' : ' port-disabled'}`;
         if (title) port.title = title;
         if (typeof top === 'number') {
             port.style.top = `${top}px`;
         }
         port.dataset.nodeId = nodeId;
         port.dataset.handle = handle;
+        if (!connectable) {
+            port.setAttribute('aria-disabled', 'true');
+        }
         
         if (handle === 'input') {
             port.addEventListener('mouseup', (e: any) => this.onPortMouseUp(e, nodeId, handle));
-        } else {
+        } else if (connectable) {
             port.addEventListener('mousedown', (e: any) => this.onPortMouseDown(e, nodeId, handle));
         }
         return port;
@@ -1904,6 +1915,10 @@ export class WorkflowEditor {
         e.stopPropagation();
         e.preventDefault();
         if (!this.connectionsLayer) return;
+        const sourceNode = this.nodes.find((candidate: any) => candidate.id === nodeId);
+        if (sourceNode && this.shouldAggregateCollapsedIfPorts(sourceNode) && this.getIfConditionIndexFromHandle(handle) !== null) {
+            return;
+        }
         const world = this.screenToWorld(e.clientX, e.clientY);
         this.connectionStart = { nodeId, handle, x: world.x, y: world.y };
         
