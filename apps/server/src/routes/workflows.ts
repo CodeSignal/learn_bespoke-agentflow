@@ -32,7 +32,10 @@ async function persistResult(engine: WorkflowEngine, result: WorkflowRunResult) 
       runId: result.runId,
       workflow,
       logs: result.logs,
-      status: result.status
+      status: result.status,
+      state: result.state,
+      currentNodeId: result.currentNodeId,
+      waitingForInput: result.waitingForInput
     };
 
     await saveRunRecord(config.runsDir, record);
@@ -189,6 +192,12 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
   router.get('/run/:runId', (req: Request, res: Response) => {
     const { runId } = req.params;
 
+    // Reject anything that isn't a plain numeric timestamp to prevent path traversal
+    if (!/^\d+$/.test(runId)) {
+      res.status(400).json({ error: 'Invalid runId' });
+      return;
+    }
+
     // Check in-memory first — catches engines that are still running or paused
     const engine = getWorkflow(runId);
     if (engine) {
@@ -204,14 +213,14 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     }
     try {
       const record = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as WorkflowRunRecord;
-      // Return as WorkflowRunResult shape — completed/failed runs are no longer waiting
+      // Reconstruct WorkflowRunResult using persisted fields where available
       const result: WorkflowRunResult = {
         runId: record.runId,
         status: record.status,
         logs: record.logs,
-        state: {},
-        waitingForInput: false,
-        currentNodeId: null,
+        state: record.state ?? {},
+        waitingForInput: record.waitingForInput ?? false,
+        currentNodeId: record.currentNodeId ?? null,
       };
       res.json(result);
     } catch (error) {

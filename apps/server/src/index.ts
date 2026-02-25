@@ -3,14 +3,62 @@ import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
 import OpenAI from 'openai';
+import type { WorkflowRunRecord } from '@agentic/types';
+import WorkflowEngine, { type WorkflowLLM } from '@agentic/workflow-engine';
 import { config } from './config';
 import { logger } from './logger';
 import { createWorkflowRouter } from './routes/workflows';
 import { OpenAILLMService } from './services/openai-llm';
+import { addWorkflow } from './store/active-workflows';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const webRoot = path.resolve(__dirname, '../../web');
 const webDist = path.join(webRoot, 'dist');
+
+/**
+ * On startup, scan the runs directory for persisted paused runs and re-hydrate
+ * each one back into the active-workflows Map so that `POST /api/resume` works
+ * even after a server restart.
+ */
+function restorePausedRuns(runsDir: string, llm?: WorkflowLLM): void {
+  let files: string[];
+  try {
+    files = fs.readdirSync(runsDir).filter((f) => f.startsWith('run_') && f.endsWith('.json'));
+  } catch {
+    return; // runsDir missing on very first boot (created lazily by config.ts)
+  }
+
+  for (const file of files) {
+    try {
+      const record = JSON.parse(
+        fs.readFileSync(path.join(runsDir, file), 'utf-8')
+      ) as WorkflowRunRecord;
+
+      if (
+        record.status === 'paused' &&
+        record.waitingForInput === true &&
+        record.state !== undefined &&
+        record.currentNodeId != null
+      ) {
+        const engine = new WorkflowEngine(record.workflow, {
+          runId: record.runId,
+          llm,
+          initialState: {
+            state: record.state,
+            currentNodeId: record.currentNodeId,
+            status: 'paused',
+            waitingForInput: true,
+            logs: record.logs
+          }
+        });
+        addWorkflow(engine);
+        logger.info('Restored paused run %s from disk', record.runId);
+      }
+    } catch (err) {
+      logger.warn('Skipped unreadable run file %s: %s', file, String(err));
+    }
+  }
+}
 
 async function bootstrap() {
   const app = express();
@@ -25,6 +73,8 @@ async function bootstrap() {
   } else {
     logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
   }
+
+  restorePausedRuns(config.runsDir, llmService);
 
   app.use('/api', createWorkflowRouter(llmService));
 

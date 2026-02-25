@@ -48,6 +48,10 @@ export interface WorkflowRunRecord {
   workflow: WorkflowGraph;
   logs: WorkflowLogEntry[];
   status: WorkflowStatus;
+  /** Persisted for paused-run recovery across server restarts */
+  state?: Record<string, unknown>;
+  currentNodeId?: string | null;
+  waitingForInput?: boolean;
 }
 
 export interface ApprovalInput {

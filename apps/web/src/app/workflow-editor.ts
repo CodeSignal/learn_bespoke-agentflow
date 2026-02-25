@@ -938,9 +938,8 @@ export class WorkflowEditor {
         this.nodesLayer.innerHTML = '';
         this.connectionsLayer.innerHTML = '';
         this.nodes.forEach(n => this.renderNode(n));
-        this.renderConnections();
+        this.renderConnections(); // renderConnections() already calls scheduleSave()
         this.updateRunButton();
-        this.scheduleSave();
     }
 
     renderNode(node) {
@@ -1867,6 +1866,9 @@ export class WorkflowEditor {
         this.pollTimer = setTimeout(async () => {
             this.pollTimer = null;
             const result = await fetchRun(runId);
+            // Guard: bail out if this run was cancelled or replaced while the
+            // request was in-flight (clearRunId() can't cancel an already-fired timer).
+            if (localStorage.getItem(WorkflowEditor.RUN_KEY) !== runId) return;
             if (!result) {
                 this.clearRunId();
                 this.setWorkflowState('idle');
