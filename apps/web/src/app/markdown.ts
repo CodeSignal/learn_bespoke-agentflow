@@ -50,9 +50,11 @@ function renderInline(raw: string, fn?: FootnoteCtx): string {
     // Italic
     out = out.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
     out = out.replace(/_([^_\n]+)_/g, '<em>$1</em>');
-    // Links — block javascript: / data: / vbscript: schemes to prevent XSS
+    // Links — block javascript: / data: / vbscript: schemes to prevent XSS.
+    // URL capture allows one level of balanced parentheses so that links like
+    // https://en.wikipedia.org/wiki/Rust_(programming_language) work correctly.
     out = out.replace(
-        /\[([^\]]+)\]\(([^)]+)\)/g,
+        /\[([^\]]+)\]\(((?:[^()\s]|\([^)]*\))+)\)/g,
         (_m, linkText: string, href: string) => {
             const safeHref = /^(?:javascript|data|vbscript):/i.test(href.trim()) ? '#' : href;
             return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${linkText}</a>`;
