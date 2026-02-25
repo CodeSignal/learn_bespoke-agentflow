@@ -3,8 +3,13 @@
 
 import type { WorkflowGraph } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
+import { renderMarkdown, escapeHtml } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
+
+const TOOLS_CONFIG: Array<{ key: string; label: string; iconClass: string }> = [
+    { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
+];
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
 const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
 const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
@@ -177,19 +182,14 @@ export class WorkflowEditor {
 
     getNodeWidth(node) {
         if (!node) return DEFAULT_NODE_WIDTH;
-        
-        // If expanded, use fixed expanded width
         if (node.data && !node.data.collapsed) {
             return EXPANDED_NODE_WIDTH;
         }
-        
-        // Try to get actual width from DOM
+        // For collapsed nodes, read the actual rendered width. Since there is no
+        // CSS width transition on .node, the class toggle is instant and
+        // offsetWidth forces a synchronous reflow that returns the correct value.
         const el = document.getElementById(node.id);
-        if (el) {
-            return el.offsetWidth || DEFAULT_NODE_WIDTH;
-        }
-        
-        return DEFAULT_NODE_WIDTH;
+        return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
     }
 
     setWorkflowState(state) {
@@ -200,10 +200,8 @@ export class WorkflowEditor {
     setRunButtonHint(reason) {
         if (!this.runButton) return;
         if (reason) {
-            this.runButton.title = reason;
             this.runButton.setAttribute('data-disabled-hint', reason);
         } else {
-            this.runButton.removeAttribute('title');
             this.runButton.removeAttribute('data-disabled-hint');
         }
     }
@@ -849,7 +847,7 @@ export class WorkflowEditor {
         // Preview (Collapsed State)
         const preview = document.createElement('div');
         preview.className = 'node-preview';
-        preview.innerText = this.getNodePreviewText(node);
+        preview.innerHTML = this.getNodePreviewHTML(node);
         el.appendChild(preview);
 
         // Body (Form) - Only visible when expanded
@@ -884,7 +882,7 @@ export class WorkflowEditor {
     getNodeLabel(node) {
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim() || 'Agent';
-            return `<span class="icon icon-robot icon-primary"></span>${name}`;
+            return `<span class="icon icon-robot icon-primary"></span>${escapeHtml(name)}`;
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
         if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
@@ -893,16 +891,30 @@ export class WorkflowEditor {
         return `<span class="icon icon-primary"></span>${node.type}`;
     }
 
-    getNodePreviewText(node) {
+    getNodePreviewHTML(node) {
+        let text: string;
         if (node.type === 'agent') {
             const name = (node.data.agentName || 'Agent').trim();
             const model = (node.data.model || 'gpt-5').toUpperCase();
-            return `${name} • ${model}`;
+            text = `${escapeHtml(name)} • ${escapeHtml(model)}`;
+        } else if (node.type === 'if') {
+            text = `Condition: ${escapeHtml(node.data.condition || '...')}`;
+        } else if (node.type === 'approval') {
+            text = escapeHtml(node.data.prompt || 'Approval message required');
+        } else if (node.type === 'start') {
+            text = 'Uses Initial Prompt';
+        } else {
+            text = 'Configure this node';
         }
-        if (node.type === 'if') return `Condition: ${node.data.condition || '...'} `;
-        if (node.type === 'approval') return node.data.prompt || 'Approval message required';
-        if (node.type === 'start') return 'Uses Initial Prompt';
-        return 'Configure this node';
+
+        const enabledToolIcons = node.type === 'agent'
+            ? TOOLS_CONFIG
+                .filter(t => (node.data.tools || {})[t.key])
+                .map(t => `<span class="icon ${t.iconClass} icon-small node-preview-tool-icon"></span>`)
+                .join('')
+            : '';
+
+        return `<span class="node-preview-text">${text}</span>${enabledToolIcons}`;
     }
 
     // --- IN-NODE FORMS ---
@@ -995,40 +1007,42 @@ export class WorkflowEditor {
             // Tools
             container.appendChild(buildLabel('Tools'));
             const toolsList = document.createElement('div');
-            toolsList.className = 'tool-list';
+            toolsList.className = 'tools-checkbox-group';
 
-            const toolItems = [
-                { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
-            ];
+            TOOLS_CONFIG.forEach(tool => {
+                const label = document.createElement('label');
+                label.className = 'input-checkbox input-checkbox-small';
 
-            toolItems.forEach(tool => {
-                const row = document.createElement('button');
-                row.type = 'button';
-                row.className = 'tool-item tool-tag tag secondary';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = Boolean(node.data.tools?.[tool.key]);
+                checkbox.addEventListener('change', () => {
+                    if (!node.data.tools) node.data.tools = {};
+                    node.data.tools[tool.key] = checkbox.checked;
+                    this.updatePreview(node);
+                });
+
+                const box = document.createElement('span');
+                box.className = 'input-checkbox-box';
+                const checkmark = document.createElement('span');
+                checkmark.className = 'input-checkbox-checkmark';
+                box.appendChild(checkmark);
+
+                label.appendChild(checkbox);
+                label.appendChild(box);
 
                 if (tool.iconClass) {
                     const icon = document.createElement('span');
-                    icon.className = `icon ${tool.iconClass} icon-small tool-item-icon`;
-                    row.appendChild(icon);
+                    icon.className = `icon ${tool.iconClass} icon-small`;
+                    label.appendChild(icon);
                 }
+
                 const labelText = document.createElement('span');
+                labelText.className = 'input-checkbox-label';
                 labelText.textContent = tool.label;
-                row.appendChild(labelText);
+                label.appendChild(labelText);
 
-                const setSelected = (selected) => {
-                    if (!node.data.tools) node.data.tools = {};
-                    node.data.tools[tool.key] = selected;
-                    row.classList.toggle('selected', selected);
-                    row.classList.toggle('secondary', !selected);
-                    row.setAttribute('aria-pressed', String(selected));
-                };
-
-                setSelected(Boolean(node.data.tools?.[tool.key]));
-                row.addEventListener('click', () => {
-                    setSelected(!Boolean(node.data.tools?.[tool.key]));
-                });
-
-                toolsList.appendChild(row);
+                toolsList.appendChild(label);
             });
 
             container.appendChild(toolsList);
@@ -1066,7 +1080,7 @@ export class WorkflowEditor {
         const el = document.getElementById(node.id);
         if(!el) return;
         const preview = el.querySelector('.node-preview');
-        if(preview) preview.innerText = this.getNodePreviewText(node);
+        if(preview) preview.innerHTML = this.getNodePreviewHTML(node);
     }
 
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---
@@ -1371,7 +1385,12 @@ export class WorkflowEditor {
             message.appendChild(label);
         }
         const body = document.createElement('div');
-        body.textContent = normalizedText;
+        if (role === 'agent') {
+            body.className = 'chat-message-body markdown';
+            body.innerHTML = renderMarkdown(normalizedText);
+        } else {
+            body.textContent = normalizedText;
+        }
         message.appendChild(body);
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;

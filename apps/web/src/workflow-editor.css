@@ -110,7 +110,7 @@ body {
         background-image: radial-gradient(color-mix(in srgb, var(--Colors-Stroke-Default) 10%, transparent) 1px, transparent 1px);
     }
 
-    .tool-list .tool-item.selected {
+    .tools-checkbox-group .input-checkbox.selected {
         background: color-mix(in srgb, var(--Colors-Tags-Primary) 35%, var(--Colors-Tags-Secondary));
     }
 }
@@ -233,7 +233,7 @@ body {
 
 path.connection-line {
     fill: none;
-    stroke: var(--Colors-Stroke-Default);
+    stroke: var(--Colors-Stroke-Stronger);
     stroke-width: 2px;
     transition: stroke 0.2s;
     pointer-events: none;
@@ -273,7 +273,7 @@ path.connection-line.active {
     min-width: var(--node-width-min);
     max-width: var(--node-width-max);
     z-index: 2;
-    transition: box-shadow 0.2s, width 0.2s, min-width 0.2s, max-width 0.2s;
+    transition: box-shadow 0.2s;
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
@@ -387,10 +387,24 @@ path.connection-line.active {
     padding: var(--UI-Spacing-spacing-mxs) var(--UI-Spacing-spacing-ms);
     font-size: var(--Fonts-Body-Default-xs);
     color: var(--Colors-Text-Body-Medium);
+    max-width: calc(var(--node-width-max) - var(--UI-Spacing-spacing-ms) * 2);
+    display: flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-xs);
+    overflow: hidden;
+}
+
+.node-preview-text {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: calc(var(--node-width-max) - var(--UI-Spacing-spacing-ms) * 2);
+    flex: 1;
+    min-width: 0;
+}
+
+.node-preview-tool-icon {
+    flex-shrink: 0;
+    opacity: 0.7;
 }
 
 .node.expanded .node-preview {
@@ -482,41 +496,29 @@ path.connection-line.active {
     box-shadow: 0 0 0 4px var(--Colors-Shadow-Medium-Soft);
 }
 
-.tool-list {
-    border: 1px solid var(--Colors-Stroke-Default);
-    border-radius: var(--UI-Radius-radius-xs);
-    padding: var(--UI-Spacing-spacing-mxs);
-    max-height: 100px;
-    overflow-y: auto;
-    background: var(--Colors-Backgrounds-Main-Top);
+.tools-checkbox-group {
     display: flex;
     flex-direction: column;
     gap: var(--UI-Spacing-spacing-s);
+    padding: var(--UI-Spacing-spacing-mxs);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    background: var(--Colors-Backgrounds-Main-Top);
 }
 
-.tool-list .tool-item {
-    display: flex;
-    align-items: center;
-    gap: var(--UI-Spacing-spacing-s);
-    cursor: pointer;
-    font-size: var(--Fonts-Body-Default-sm);
-    color: var(--Colors-Text-Body-Default);
+.tools-checkbox-group .input-checkbox {
+    display: flex; /* Override .node-form label { display: block } */
+    margin: 0;
 }
 
-.tool-list .tool-tag {
-    width: fit-content;
-    border: none;
-    cursor: pointer;
-    appearance: none;
-    -webkit-appearance: none;
+.tools-checkbox-group .icon {
+    display: inline;
 }
 
-.tool-list .tool-item:hover {
-    color: var(--Colors-Text-Body-Strong);
-}
-
-.tool-list .tool-item.selected .tool-item-icon {
-    color: var(--Colors-Primary-Medium);
+.tools-checkbox-group .input-checkbox-label {
+    display: inline;
+    margin: 0;
+    white-space: nowrap;
 }
 
 /* Right Sidebar - Chat Panel */
@@ -632,6 +634,124 @@ path.connection-line.active {
     text-transform: uppercase;
     letter-spacing: 0.05em;
     opacity: 0.8;
+}
+
+/* Markdown rendered inside agent chat messages.
+   Uses flex gap for ALL spacing — avoids any dependency on margins
+   or browser UA default margin-block resets. */
+.chat-message-body.markdown {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    font-size: var(--Fonts-Body-Default-xs);
+}
+
+/* Lists: flex column with gap so no UA margin-block defaults matter */
+.chat-message-body.markdown ul,
+.chat-message-body.markdown ol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    margin: 0;
+    padding: 0;
+    padding-left: var(--UI-Spacing-spacing-ml);
+}
+
+/* Headings */
+.chat-message-body.markdown h1,
+.chat-message-body.markdown h2,
+.chat-message-body.markdown h3,
+.chat-message-body.markdown h4 {
+    font-family: var(--heading-family, var(--body-family, "Work Sans", system-ui, sans-serif));
+    font-weight: 600;
+    color: var(--Colors-Text-Body-Strong);
+    line-height: 1.3;
+    margin: 0;
+}
+.chat-message-body.markdown h1 { font-size: var(--Fonts-Body-Default-lg); }
+.chat-message-body.markdown h2 { font-size: var(--Fonts-Body-Default-md); }
+.chat-message-body.markdown h3,
+.chat-message-body.markdown h4 { font-size: var(--Fonts-Body-Default-sm); }
+
+/* Inline code */
+.chat-message-body.markdown code {
+    font-family: var(--code-family, ui-monospace, SFMono-Regular, "JetBrains Mono", monospace);
+    font-size: var(--Fonts-Body-Default-xs);
+    background: var(--Colors-Backgrounds-Main-Strong);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-min);
+    padding: var(--UI-Spacing-spacing-min) var(--UI-Spacing-spacing-xxs);
+}
+
+/* Code blocks */
+.chat-message-body.markdown pre {
+    background: var(--Colors-Backgrounds-Main-Strong);
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    padding: var(--UI-Spacing-spacing-ms);
+    overflow-x: auto;
+    margin: 0;
+}
+.chat-message-body.markdown pre code {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: var(--Fonts-Body-Default-xxs);
+    line-height: 1.5;
+}
+
+/* Blockquote */
+.chat-message-body.markdown blockquote {
+    border-left: 3px solid var(--Colors-Stroke-Strong);
+    padding: var(--UI-Spacing-spacing-xs) var(--UI-Spacing-spacing-ms);
+    color: var(--Colors-Text-Body-Medium);
+    margin: 0;
+}
+
+.chat-message-body.markdown a { color: var(--Colors-Primary-Medium); text-decoration: underline; }
+.chat-message-body.markdown strong { font-weight: 600; }
+.chat-message-body.markdown em { font-style: italic; }
+.chat-message-body.markdown hr { border: none; border-top: 1px solid var(--Colors-Stroke-Default); margin: 0; }
+
+/* Tables */
+.chat-message-body.markdown table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: var(--Fonts-Body-Default-xs);
+}
+.chat-message-body.markdown th,
+.chat-message-body.markdown td {
+    border: 1px solid var(--Colors-Stroke-Default);
+    padding: var(--UI-Spacing-spacing-xxs) var(--UI-Spacing-spacing-xs);
+    text-align: left;
+}
+.chat-message-body.markdown th {
+    background: var(--Colors-Backgrounds-Main-Strong);
+    font-weight: 600;
+}
+
+/* Footnotes */
+.chat-message-body.markdown .md-footnotes {
+    font-size: var(--Fonts-Body-Default-xxs);
+    color: var(--Colors-Text-Body-Medium);
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+}
+.chat-message-body.markdown .md-footnotes ol {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xxs);
+    margin: 0;
+    padding: 0;
+    padding-left: var(--UI-Spacing-spacing-ml);
+    list-style: none;
+}
+.chat-message-body.markdown .md-fn-ref {
+    font-size: 0.75em;
+    vertical-align: super;
+    color: var(--Colors-Primary-Medium);
+    line-height: 0;
 }
 
 .chat-message.system {

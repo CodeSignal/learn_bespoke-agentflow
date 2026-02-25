@@ -8,8 +8,15 @@ import type {
   WorkflowStatus
 } from '@agentic/types';
 
-type AgentToolsConfig = {
+/**
+ * Configuration for tools available to agents during execution.
+ * Agents can enable multiple tools simultaneously by setting their respective boolean flags.
+ * Each tool enabled is passed to the LLM as an available function to call.
+ */
+export type AgentToolsConfig = {
+  /** Enable web search capability for the agent */
   web_search?: boolean;
+  // Future tools can be added here, e.g.: calculator?: boolean; email?: boolean;
 };
 
 export interface AgentInvocation {
