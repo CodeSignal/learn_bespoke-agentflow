@@ -72,7 +72,12 @@ function renderTable(tableLines: string[], fn: FootnoteCtx): string {
 
     const headers = parseRow(tableLines[0]);
     // tableLines[1] is the separator row — skip it
-    const rows = tableLines.slice(2).map(parseRow);
+    // Normalize each row to exactly headers.length cells (pad or truncate)
+    const rows = tableLines.slice(2).map((line) => {
+        const cells = parseRow(line);
+        while (cells.length < headers.length) cells.push('');
+        return cells.slice(0, headers.length);
+    });
 
     const thead =
         `<thead><tr>${headers
@@ -161,7 +166,7 @@ function collectIndented(lines: string[], startIdx: number): string[] {
             break;
         }
         if (INDENT_UL.test(l) || INDENT_OL.test(l)) {
-            result.push(l.replace(/^  |\t/, ''));
+            result.push(l.replace(/^(?:  |\t)/, ''));
             i++;
         } else {
             break;
@@ -180,7 +185,7 @@ export function renderMarkdown(input: string): string {
     const withoutFootnoteDefs = input.replace(
         /^\[\^([^\]]+)\]:\s*(.+)$/gm,
         (_m, id: string, def: string) => {
-            fn.map.set(id.trim(), def.trim());
+            fn.map.set(escapeHtml(id.trim()), def.trim());
             return '';
         }
     );
