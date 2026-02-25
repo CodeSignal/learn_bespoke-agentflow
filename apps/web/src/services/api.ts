@@ -46,15 +46,16 @@ export function runWorkflow(graph: WorkflowGraph, options: RequestOptions = {}):
   return request<WorkflowRunResult>('/api/run', { graph }, options);
 }
 
-export async function runWorkflowStream(
-  graph: WorkflowGraph,
+async function requestWorkflowStream(
+  url: string,
+  body: unknown,
   onLog: (entry: WorkflowLogEntry) => void,
   options: RequestOptions = {}
 ): Promise<WorkflowRunResult> {
-  const res = await fetch('/api/run-stream', {
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ graph }),
+    body: JSON.stringify(body),
     signal: options.signal
   });
 
@@ -107,6 +108,14 @@ export async function runWorkflowStream(
   return result;
 }
 
+export function runWorkflowStream(
+  graph: WorkflowGraph,
+  onLog: (entry: WorkflowLogEntry) => void,
+  options: RequestOptions = {}
+): Promise<WorkflowRunResult> {
+  return requestWorkflowStream('/api/run-stream', { graph }, onLog, options);
+}
+
 export type ProviderModel = {
   id: string;
   name: string;
@@ -136,6 +145,15 @@ export function resumeWorkflow(
   options: RequestOptions = {}
 ): Promise<WorkflowRunResult> {
   return request<WorkflowRunResult>('/api/resume', { runId, input }, options);
+}
+
+export function resumeWorkflowStream(
+  runId: string,
+  input: ApprovalInput,
+  onLog: (entry: WorkflowLogEntry) => void,
+  options: RequestOptions = {}
+): Promise<WorkflowRunResult> {
+  return requestWorkflowStream('/api/resume-stream', { runId, input }, onLog, options);
 }
 
 export async function fetchRun(runId: string): Promise<WorkflowRunResult | null> {
