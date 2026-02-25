@@ -472,6 +472,50 @@ export class WorkflowEditor {
         return IF_PORT_BASE_TOP + (index * IF_PORT_STEP);
     }
 
+    getIfConditionPortTop(node: EditorNode, index: number): number {
+        if (node.data?.collapsed) {
+            return this.getIfPortTop(index);
+        }
+
+        const nodeEl = document.getElementById(node.id);
+        if (!nodeEl) {
+            return this.getIfPortTop(index);
+        }
+
+        const conditionRows = Array.from(nodeEl.querySelectorAll('.condition-row')) as HTMLElement[];
+        const row = conditionRows[index];
+        if (!row) {
+            return this.getIfPortTop(index);
+        }
+
+        return Math.round(row.offsetTop + (row.offsetHeight / 2) - 6);
+    }
+
+    getIfFallbackPortTop(node: EditorNode): number {
+        const conditions = this.getIfConditions(node);
+        if (node.data?.collapsed) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const nodeEl = document.getElementById(node.id);
+        if (!nodeEl) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const conditionRows = Array.from(nodeEl.querySelectorAll('.condition-row')) as HTMLElement[];
+        if (conditionRows.length === 0) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const lastRow = conditionRows[conditionRows.length - 1];
+        const lastCenterTop = lastRow.offsetTop + (lastRow.offsetHeight / 2) - 6;
+        const dynamicStep = conditionRows.length > 1
+            ? conditionRows[conditionRows.length - 1].offsetTop - conditionRows[conditionRows.length - 2].offsetTop
+            : IF_PORT_STEP;
+
+        return Math.round(lastCenterTop + dynamicStep);
+    }
+
     shouldAggregateCollapsedIfPorts(node: EditorNode): boolean {
         return node.type === 'if' && Boolean(node.data?.collapsed) && this.getIfConditions(node).length > 1;
     }
@@ -537,11 +581,11 @@ export class WorkflowEditor {
                 }
             }
             if (sourceHandle === IF_FALLBACK_HANDLE) {
-                return this.getIfPortTop(this.getIfConditions(node).length) + 6;
+                return this.getIfFallbackPortTop(node) + 6;
             }
             const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
             if (conditionIndex !== null) {
-                return this.getIfPortTop(conditionIndex) + 6;
+                return this.getIfConditionPortTop(node, conditionIndex) + 6;
             }
         }
 
@@ -1640,7 +1684,7 @@ export class WorkflowEditor {
                                 this.getIfConditionHandle(index),
                                 'port-out port-condition',
                                 title,
-                                this.getIfPortTop(index)
+                                this.getIfConditionPortTop(node, index)
                             )
                         );
                     });
@@ -1650,7 +1694,7 @@ export class WorkflowEditor {
                             IF_FALLBACK_HANDLE,
                             'port-out port-condition-fallback',
                             'False fallback',
-                            this.getIfPortTop(conditions.length)
+                            this.getIfFallbackPortTop(node)
                         )
                     );
                 }
