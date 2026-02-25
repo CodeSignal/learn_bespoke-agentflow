@@ -1,6 +1,6 @@
 // Bespoke Agent Builder - Client Logic
 
-import type { WorkflowConnection, WorkflowNode } from '@agentic/types';
+import type { WorkflowConnection, WorkflowNode, WorkflowRunResult } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
@@ -80,6 +80,60 @@ type RunHistoryEntry = {
     content: string;
 };
 
+type DropdownItem = {
+    value: string;
+    label: string;
+};
+
+type DropdownConfig = {
+    placeholder: string;
+    items: DropdownItem[];
+    selectedValue: string;
+    width: string;
+    onSelect: (value: string) => void;
+};
+
+type DropdownInstance = {
+    destroy?: () => void;
+};
+
+type DropdownCtor = new (container: HTMLElement, config: DropdownConfig) => DropdownInstance;
+
+type SplitPanelInstance = {
+    getLeftPanel: () => HTMLElement;
+    getRightPanel: () => HTMLElement;
+};
+
+type SplitPanelCtor = new (
+    container: Element,
+    options: { initialSplit: number; minLeft: number; minRight: number }
+) => SplitPanelInstance;
+
+type ModalInstance = {
+    open: () => void;
+    close: () => void;
+    destroy: () => void;
+};
+
+type ModalFooterButton = {
+    label: string;
+    type: 'primary' | 'secondary';
+    onClick: (_event: Event, instance: ModalInstance) => void;
+};
+
+type ModalCtor = new (options: {
+    size: 'small' | 'medium' | 'large';
+    title: string;
+    content: HTMLElement;
+    footerButtons: ModalFooterButton[];
+    onClose: () => void;
+}) => ModalInstance;
+
+type WorkflowGraphInput = {
+    nodes?: EditorNode[];
+    connections?: WorkflowConnection[];
+};
+
 export class WorkflowEditor {
     private modelOptions: string[];
 
@@ -143,11 +197,11 @@ export class WorkflowEditor {
 
     private lastLlmResponseContent: string | null;
 
-    private splitPanelCtorPromise: Promise<any> | null;
+    private splitPanelCtorPromise: Promise<SplitPanelCtor> | null;
 
-    private dropdownCtorPromise: Promise<any> | null;
+    private dropdownCtorPromise: Promise<DropdownCtor> | null;
 
-    private modalCtorPromise: Promise<any> | null;
+    private modalCtorPromise: Promise<ModalCtor> | null;
 
     private stateReady: boolean;
 
@@ -155,7 +209,7 @@ export class WorkflowEditor {
 
     private pollTimer: ReturnType<typeof setTimeout> | null;
 
-    private splitPanel: any;
+    private splitPanel: SplitPanelInstance | null;
 
     private currentRunId: string | null;
 
@@ -214,6 +268,7 @@ export class WorkflowEditor {
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
         this.modalCtorPromise = null;
+        this.splitPanel = null;
         this.stateReady = false;
         this.saveTimer = null;
         this.pollTimer = null;
@@ -251,29 +306,35 @@ export class WorkflowEditor {
         });
     }
 
-    async getDropdownCtor() {
+    async getDropdownCtor(): Promise<DropdownCtor> {
         if (!this.dropdownCtorPromise) {
             const origin = window.location.origin;
             const dropdownModulePath = `${origin}/design-system/components/dropdown/dropdown.js`;
-            this.dropdownCtorPromise = import(/* @vite-ignore */ dropdownModulePath).then((mod: any) => mod.default);
+            this.dropdownCtorPromise = import(/* @vite-ignore */ dropdownModulePath).then(
+                (mod) => (mod as { default: DropdownCtor }).default
+            );
         }
         return this.dropdownCtorPromise;
     }
 
-    async getSplitPanelCtor() {
+    async getSplitPanelCtor(): Promise<SplitPanelCtor> {
         if (!this.splitPanelCtorPromise) {
             const origin = window.location.origin;
             const splitPanelModulePath = `${origin}/design-system/components/split-panel/split-panel.js`;
-            this.splitPanelCtorPromise = import(/* @vite-ignore */ splitPanelModulePath).then((mod: any) => mod.default);
+            this.splitPanelCtorPromise = import(/* @vite-ignore */ splitPanelModulePath).then(
+                (mod) => (mod as { default: SplitPanelCtor }).default
+            );
         }
         return this.splitPanelCtorPromise;
     }
 
-    async getModalCtor() {
+    async getModalCtor(): Promise<ModalCtor> {
         if (!this.modalCtorPromise) {
             const origin = window.location.origin;
             const modalModulePath = `${origin}/design-system/components/modal/modal.js`;
-            this.modalCtorPromise = import(/* @vite-ignore */ modalModulePath).then((mod: any) => mod.default);
+            this.modalCtorPromise = import(/* @vite-ignore */ modalModulePath).then(
+                (mod) => (mod as { default: ModalCtor }).default
+            );
         }
         return this.modalCtorPromise;
     }
@@ -302,7 +363,7 @@ export class WorkflowEditor {
 
             // Canvas now has correct dimensions — reposition the Start node if it's
             // still the only node (i.e. no default-workflow.json was loaded yet or at all)
-            const startNode = this.nodes.find((n: any) => n.type === 'start');
+            const startNode = this.nodes.find((n) => n.type === 'start');
             if (startNode && this.nodes.length === 1) {
                 const pos = this.getDefaultStartPosition();
                 startNode.x = pos.x;
@@ -314,7 +375,13 @@ export class WorkflowEditor {
         }
     }
 
-    async setupDropdown(container: any, items: any, selectedValue: any, placeholder: any, onSelect: any) {
+    async setupDropdown(
+        container: HTMLElement,
+        items: DropdownItem[],
+        selectedValue: string,
+        placeholder: string,
+        onSelect: (value: string) => void
+    ): Promise<DropdownInstance> {
         const DropdownCtor = await this.getDropdownCtor();
         const dropdown = new DropdownCtor(container, {
             placeholder,
@@ -338,7 +405,7 @@ export class WorkflowEditor {
         this.zoomValue.textContent = `${Math.round(this.viewport.scale * 100)}%`;
     }
 
-    screenToWorld(clientX: any, clientY: any) {
+    screenToWorld(clientX: number, clientY: number): Point {
         if (!this.canvas) return { x: 0, y: 0 };
         const rect = this.canvas.getBoundingClientRect();
         return {
@@ -348,7 +415,7 @@ export class WorkflowEditor {
     }
 
     getPrimaryAgentName() {
-        const agentNode = this.nodes.find((n: any) => n.type === 'agent');
+        const agentNode = this.nodes.find((n) => n.type === 'agent');
         if (agentNode && agentNode.data) {
             const name = (agentNode.data.agentName || '').trim();
             if (name) return name;
@@ -356,7 +423,7 @@ export class WorkflowEditor {
         return 'Agent';
     }
 
-    getNodeWidth(node: any) {
+    getNodeWidth(node: EditorNode | null | undefined): number {
         if (!node) return DEFAULT_NODE_WIDTH;
         if (node.data && !node.data.collapsed) {
             return EXPANDED_NODE_WIDTH;
@@ -368,45 +435,47 @@ export class WorkflowEditor {
         return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
     }
 
-    normalizeIfCondition(condition: any) {
-        const normalizedOperator = condition?.operator === 'contains' ? 'contains' : 'equal';
-        const rawValue = condition?.value;
+    normalizeIfCondition(condition: unknown): IfCondition {
+        const asRecord = (typeof condition === 'object' && condition !== null) ? condition as Partial<IfCondition> : undefined;
+        const candidateOperator = asRecord?.operator;
+        const rawValue = asRecord?.value;
         return {
-            operator: normalizedOperator,
+            operator: candidateOperator === 'contains' ? 'contains' : 'equal',
             value: typeof rawValue === 'string' ? rawValue : ''
         };
     }
 
-    getIfConditionHandle(index: any) {
+    getIfConditionHandle(index: number): string {
         return `${IF_CONDITION_HANDLE_PREFIX}${index}`;
     }
 
-    getIfConditionIndexFromHandle(handle: any) {
+    getIfConditionIndexFromHandle(handle: string | undefined): number | null {
         if (handle === 'true') return 0;
         if (typeof handle !== 'string' || !handle.startsWith(IF_CONDITION_HANDLE_PREFIX)) return null;
         const parsedIndex = Number.parseInt(handle.slice(IF_CONDITION_HANDLE_PREFIX.length), 10);
         return Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : null;
     }
 
-    getIfPortTop(index: any) {
+    getIfPortTop(index: number): number {
         return IF_PORT_BASE_TOP + (index * IF_PORT_STEP);
     }
 
-    getIfConditions(node: any) {
+    getIfConditions(node: EditorNode): IfCondition[] {
         if (!node.data) node.data = {};
         if (!Array.isArray(node.data.conditions) || node.data.conditions.length === 0) {
             node.data.conditions = [{ ...DEFAULT_IF_CONDITION }];
         }
-        node.data.conditions = node.data.conditions.map((condition: any) => this.normalizeIfCondition(condition));
+        node.data.conditions = node.data.conditions.map((condition) => this.normalizeIfCondition(condition));
         return node.data.conditions;
     }
 
-    removeIfCondition(node: any, conditionIndex: any) {
+    removeIfCondition(node: EditorNode, conditionIndex: number): void {
         const conditions = this.getIfConditions(node);
         if (conditions.length <= 1) return;
+        if (!node.data) return;
 
-        node.data.conditions = conditions.filter((_: any, index: any) => index !== conditionIndex);
-        this.connections = this.connections.reduce((nextConnections: any, connection: any) => {
+        node.data.conditions = conditions.filter((_, index) => index !== conditionIndex);
+        this.connections = this.connections.reduce<WorkflowConnection[]>((nextConnections, connection) => {
             if (connection.source !== node.id) {
                 nextConnections.push(connection);
                 return nextConnections;
@@ -433,7 +502,7 @@ export class WorkflowEditor {
         }, []);
     }
 
-    getOutputPortCenterYOffset(node: any, sourceHandle: any) {
+    getOutputPortCenterYOffset(node: EditorNode, sourceHandle?: string): number {
         if (node.type === 'if') {
             if (sourceHandle === IF_FALLBACK_HANDLE) {
                 return this.getIfPortTop(this.getIfConditions(node).length) + 6;
@@ -449,12 +518,12 @@ export class WorkflowEditor {
         return 24;
     }
 
-    setWorkflowState(state: any) {
+    setWorkflowState(state: WorkflowState): void {
         this.workflowState = state;
         this.updateRunButton();
     }
 
-    setRunButtonHint(reason: any) {
+    setRunButtonHint(reason: string | null): void {
         if (!this.runButton) return;
         if (reason) {
             this.runButton.setAttribute('data-disabled-hint', reason);
@@ -463,10 +532,10 @@ export class WorkflowEditor {
         }
     }
 
-    isAbortError(error: any) {
+    isAbortError(error: unknown): boolean {
         if (!error) return false;
-        if (error.name === 'AbortError') return true;
-        const message = typeof error.message === 'string' ? error.message : '';
+        if (error instanceof Error && error.name === 'AbortError') return true;
+        const message = error instanceof Error ? error.message : '';
         return message.toLowerCase().includes('aborted');
     }
 
@@ -872,7 +941,7 @@ export class WorkflowEditor {
 
     // --- NODE MANAGEMENT ---
 
-    addNode(type: any, x: any, y: any) {
+    addNode(type: string, x: number, y: number): void {
         const normalizedType = type === 'input' ? 'approval' : type;
         const node: EditorNode = {
             id: `node_${this.nextNodeId++}`,
@@ -1021,10 +1090,10 @@ export class WorkflowEditor {
         }
     }
 
-    loadWorkflow(graph: any) {
+    loadWorkflow(graph: WorkflowGraphInput) {
         this.nodes = graph.nodes ?? [];
         this.connections = graph.connections ?? [];
-        const maxId = this.nodes.reduce((max: any, n: any) => {
+        const maxId = this.nodes.reduce((max, n) => {
             const num = parseInt(n.id.replace('node_', ''), 10);
             return isNaN(num) ? max : Math.max(max, num);
         }, 0);
@@ -1286,10 +1355,12 @@ export class WorkflowEditor {
 
     // --- IN-NODE FORMS ---
 
-    renderNodeForm(node: any, container: any) {
+    renderNodeForm(node: EditorNode, container: HTMLElement) {
         container.innerHTML = '';
+        if (!node.data) node.data = {};
+        const data = node.data;
 
-        const buildLabel = (text: any) => {
+        const buildLabel = (text: string) => {
             const label = document.createElement('label');
             label.textContent = text;
             return label;
@@ -1301,10 +1372,10 @@ export class WorkflowEditor {
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
             nameInput.className = 'input';
-            nameInput.value = node.data.agentName || 'Agent';
+            nameInput.value = data.agentName || 'Agent';
             nameInput.placeholder = 'e.g., Research Agent';
             nameInput.addEventListener('input', (e: any) => {
-                node.data.agentName = e.target.value;
+                data.agentName = e.target.value;
                 this.updatePreview(node);
                 this.updateNodeHeader(node);
             });
@@ -1315,9 +1386,9 @@ export class WorkflowEditor {
             const sysInput = document.createElement('textarea');
             sysInput.className = 'input textarea-input';
             sysInput.placeholder = 'Define the agent\'s role, persona, or instructions.';
-            sysInput.value = node.data.systemPrompt || '';
+            sysInput.value = data.systemPrompt || '';
             sysInput.addEventListener('input', (e: any) => {
-                node.data.systemPrompt = e.target.value;
+                data.systemPrompt = e.target.value;
                 this.updatePreview(node);
             });
             container.appendChild(sysInput);
@@ -1327,9 +1398,9 @@ export class WorkflowEditor {
             const userInput = document.createElement('textarea');
             userInput.className = 'input textarea-input';
             userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
-            userInput.value = node.data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
+            userInput.value = data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
             userInput.addEventListener('input', (e: any) => {
-                node.data.userPrompt = e.target.value;
+                data.userPrompt = e.target.value;
                 this.scheduleSave();
             });
             container.appendChild(userInput);
@@ -1341,11 +1412,11 @@ export class WorkflowEditor {
             container.appendChild(modelDropdown);
             this.setupDropdown(
                 modelDropdown,
-                this.modelOptions.map((m: any) => ({ value: m, label: m.toUpperCase() })),
-                node.data.model || this.modelOptions[0],
+                this.modelOptions.map((m) => ({ value: m, label: m.toUpperCase() })),
+                data.model || this.modelOptions[0],
                 'Select model',
-                (value: any) => {
-                    node.data.model = value;
+                (value) => {
+                    data.model = value;
                     this.updatePreview(node);
                     this.render();
                 }
@@ -1356,22 +1427,29 @@ export class WorkflowEditor {
             const effortDropdown = document.createElement('div');
             effortDropdown.className = 'ds-dropdown';
             container.appendChild(effortDropdown);
-            const effortOptions = (this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || []).map((optValue: any) => ({
+            const modelEfforts = data.model ? this.modelEfforts[data.model] : undefined;
+            const effortSource = modelEfforts || this.modelEfforts[this.modelOptions[0]] || [];
+            const effortOptions: DropdownItem[] = effortSource.map((optValue: string) => ({
                 value: optValue,
                 label: optValue.charAt(0).toUpperCase() + optValue.slice(1)
             }));
-            const selectedEffort = effortOptions.find((o: any) => o.value === node.data.reasoningEffort)?.value || effortOptions[0].value;
-            node.data.reasoningEffort = selectedEffort;
-            this.setupDropdown(
-                effortDropdown,
-                effortOptions,
-                selectedEffort,
-                'Select effort',
-                (value: any) => {
-                    node.data.reasoningEffort = value;
-                    this.scheduleSave();
-                }
-            );
+            const selectedEffort =
+                effortOptions.find((o) => o.value === data.reasoningEffort)?.value
+                ?? effortOptions[0]?.value
+                ?? '';
+            if (selectedEffort) {
+                data.reasoningEffort = selectedEffort;
+                this.setupDropdown(
+                    effortDropdown,
+                    effortOptions,
+                    selectedEffort,
+                    'Select effort',
+                    (value) => {
+                        data.reasoningEffort = value;
+                        this.scheduleSave();
+                    }
+                );
+            }
 
             // Tools
             container.appendChild(buildLabel('Tools'));
@@ -1384,10 +1462,10 @@ export class WorkflowEditor {
 
                 const checkbox = document.createElement('input');
                 checkbox.type = 'checkbox';
-                checkbox.checked = Boolean(node.data.tools?.[tool.key]);
+                checkbox.checked = Boolean(data.tools?.[tool.key]);
                 checkbox.addEventListener('change', () => {
-                    if (!node.data.tools) node.data.tools = {};
-                    node.data.tools[tool.key] = checkbox.checked;
+                    if (!data.tools) data.tools = {};
+                    data.tools[tool.key] = checkbox.checked;
                     this.updatePreview(node);
                 });
 
@@ -1436,8 +1514,8 @@ export class WorkflowEditor {
                     condition.operator,
                     'Select operator',
                     (value: any) => {
-                        conditions[index].operator = value;
-                        node.data.conditions = conditions.map((entry: any) => this.normalizeIfCondition(entry));
+                        conditions[index].operator = value === 'contains' ? 'contains' : 'equal';
+                        data.conditions = conditions.map((entry: any) => this.normalizeIfCondition(entry));
                         this.updatePreview(node);
                     }
                 );
@@ -1449,7 +1527,7 @@ export class WorkflowEditor {
                 valueInput.value = condition.value || '';
                 valueInput.addEventListener('input', (e: any) => {
                     conditions[index].value = e.target.value;
-                    node.data.conditions = conditions.map((entry: any) => this.normalizeIfCondition(entry));
+                    data.conditions = conditions.map((entry: any) => this.normalizeIfCondition(entry));
                     this.updatePreview(node);
                 });
                 row.appendChild(valueInput);
@@ -1480,7 +1558,7 @@ export class WorkflowEditor {
             addConditionButton.textContent = '+ Add Condition';
             addConditionButton.addEventListener('click', (e: any) => {
                 e.preventDefault();
-                node.data.conditions = [...conditions, { ...DEFAULT_IF_CONDITION }];
+                data.conditions = [...conditions, { ...DEFAULT_IF_CONDITION }];
                 this.updatePreview(node);
                 this.render();
             });
@@ -1491,10 +1569,10 @@ export class WorkflowEditor {
             const pInput = document.createElement('input');
             pInput.type = 'text';
             pInput.className = 'input';
-            pInput.value = node.data.prompt || '';
+            pInput.value = data.prompt || '';
             pInput.placeholder = 'Message shown to user when approval is required';
             pInput.addEventListener('input', (e: any) => {
-                node.data.prompt = e.target.value;
+                data.prompt = e.target.value;
                 this.scheduleSave();
             });
             container.appendChild(pInput);
@@ -1555,7 +1633,7 @@ export class WorkflowEditor {
         }
     }
 
-    createPort(nodeId: any, handle: any, className: any, title: any = '', top: any = null) {
+    createPort(nodeId: string, handle: string, className: string, title = '', top: number | null = null): HTMLDivElement {
         const port = document.createElement('div');
         port.className = `port ${className}`;
         if (title) port.title = title;
@@ -1969,12 +2047,12 @@ export class WorkflowEditor {
         }
     }
 
-    handleRunResult(result: any, fromStream: any = false) {
+    handleRunResult(result: WorkflowRunResult, fromStream = false) {
         if (!fromStream && result.logs) {
             this.renderChatFromLogs(result.logs);
         }
         const hasLlmError = Array.isArray(result.logs)
-            ? result.logs.some((entry: any) => (entry?.type || '').includes('llm_error'))
+            ? result.logs.some((entry) => (entry?.type || '').includes('llm_error'))
             : false;
 
         if (result.status === 'paused' && result.waitingForInput) {
