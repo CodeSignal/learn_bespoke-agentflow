@@ -1245,6 +1245,40 @@ export class WorkflowEditor {
         this.updateRunButton();
     }
 
+    duplicateAgentNode(sourceNode: EditorNode): void {
+        if (sourceNode.type !== 'agent') return;
+        const duplicatedData = sourceNode.data
+            ? JSON.parse(JSON.stringify(sourceNode.data)) as WorkflowNodeData
+            : {};
+        duplicatedData.collapsed = true;
+
+        const sourceEl = document.getElementById(sourceNode.id);
+        const sourceHeight = sourceEl?.offsetHeight
+            ?? (sourceNode.data?.collapsed ? 96 : 240);
+        const duplicatedCollapsedHeight = 96;
+        const duplicateSpacing = 24;
+        const minWorldY = 16;
+        const duplicateX = sourceNode.x;
+        const proposedAboveY = sourceNode.y - duplicatedCollapsedHeight - duplicateSpacing;
+        const duplicateY = proposedAboveY >= minWorldY
+            ? proposedAboveY
+            : sourceNode.y + sourceHeight + duplicateSpacing;
+
+        const duplicatedNode: EditorNode = {
+            id: `node_${this.nextNodeId++}`,
+            type: 'agent',
+            x: duplicateX,
+            y: duplicateY,
+            data: duplicatedData
+        };
+
+        this.nodes.push(duplicatedNode);
+        this.renderNode(duplicatedNode);
+        this.selectNode(duplicatedNode.id);
+        this.scheduleSave();
+        this.updateRunButton();
+    }
+
     // --- RENDERING ---
 
     render() {
@@ -1283,6 +1317,20 @@ export class WorkflowEditor {
         // Header Controls (Collapse/Delete)
         const controls = document.createElement('div');
         controls.className = 'node-controls';
+
+        let duplicateBtn: HTMLButtonElement | null = null;
+        if (node.type === 'agent') {
+            duplicateBtn = document.createElement('button');
+            duplicateBtn.type = 'button';
+            duplicateBtn.className = 'button button-tertiary button-small icon-btn duplicate';
+            duplicateBtn.innerHTML = '<span class="icon icon-content icon-primary"></span>';
+            duplicateBtn.title = 'Duplicate Agent';
+            duplicateBtn.addEventListener('mousedown', (e: any) => {
+                e.stopPropagation();
+                this.duplicateAgentNode(node);
+            });
+            controls.appendChild(duplicateBtn);
+        }
 
         let collapseBtn: HTMLButtonElement | null = null;
         let updateCollapseIcon = () => {};
@@ -1330,9 +1378,10 @@ export class WorkflowEditor {
 
         // Drag Handler
         header.addEventListener('mousedown', (e: any) => {
+            const interactingWithDuplicate = duplicateBtn && duplicateBtn.contains(e.target);
             const interactingWithCollapse = collapseBtn && collapseBtn.contains(e.target);
             const interactingWithDelete = delBtn && delBtn.contains(e.target);
-            if (interactingWithCollapse || interactingWithDelete) return;
+            if (interactingWithDuplicate || interactingWithCollapse || interactingWithDelete) return;
             
             e.stopPropagation();
             this.selectNode(node.id);
