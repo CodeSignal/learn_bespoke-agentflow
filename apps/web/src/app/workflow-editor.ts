@@ -188,6 +188,8 @@ export class WorkflowEditor {
 
     private cancelRunButton: HTMLButtonElement | null;
 
+    private clearButton: HTMLButtonElement | null;
+
     private zoomValue: HTMLElement | null;
 
     private workflowState: WorkflowState;
@@ -266,6 +268,7 @@ export class WorkflowEditor {
         this.initialPrompt = document.getElementById('initial-prompt') as HTMLInputElement | HTMLTextAreaElement | null;
         this.runButton = document.getElementById('btn-run') as HTMLButtonElement | null;
         this.cancelRunButton = document.getElementById('btn-cancel-run') as HTMLButtonElement | null;
+        this.clearButton = document.getElementById('btn-clear') as HTMLButtonElement | null;
         this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle';
         this.rightPanel = document.getElementById('right-panel');
@@ -608,6 +611,15 @@ export class WorkflowEditor {
         }
     }
 
+    setClearButtonHint(reason: string | null): void {
+        if (!this.clearButton) return;
+        if (reason) {
+            this.clearButton.setAttribute('data-disabled-hint', reason);
+        } else {
+            this.clearButton.removeAttribute('data-disabled-hint');
+        }
+    }
+
     isAbortError(error: unknown): boolean {
         if (!error) return false;
         if (error instanceof Error && error.name === 'AbortError') return true;
@@ -705,6 +717,14 @@ export class WorkflowEditor {
             const showCancel = this.workflowState === 'running';
             this.cancelRunButton.style.display = showCancel ? 'inline-flex' : 'none';
             this.cancelRunButton.disabled = !showCancel;
+        }
+
+        if (this.clearButton) {
+            const clearDisabledReason = this.workflowState === 'running'
+                ? 'Cannot clear canvas while workflow is running.'
+                : null;
+            this.clearButton.disabled = Boolean(clearDisabledReason);
+            this.setClearButtonHint(clearDisabledReason);
         }
         
         switch (this.workflowState) {
@@ -900,28 +920,28 @@ export class WorkflowEditor {
         if (cancelRunBtn) {
             cancelRunBtn.addEventListener('click', () => this.cancelRunningWorkflow());
         }
-        const clearBtn = document.getElementById('btn-clear');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', async () => {
-            const confirmed = await this.openConfirmModal({
-                title: 'Clear Canvas',
-                message: 'Remove all nodes and connections from the canvas?',
-                confirmLabel: 'Clear',
-                cancelLabel: 'Keep'
+        if (this.clearButton) {
+            this.clearButton.addEventListener('click', async () => {
+                if (this.workflowState === 'running') return;
+                const confirmed = await this.openConfirmModal({
+                    title: 'Clear Canvas',
+                    message: 'Remove all nodes and connections from the canvas?',
+                    confirmLabel: 'Clear',
+                    cancelLabel: 'Keep'
+                });
+                if(!confirmed) return;
+                this.nodes = [];
+                this.connections = [];
+                this.render();
+                this.addDefaultStartNode();
+                this.currentPrompt = '';
+                this.currentRunId = null;
+                this.clearRunId();
+                if (this.chatMessages) {
+                    this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
+                }
+                this.setWorkflowState('idle');
             });
-            if(!confirmed) return;
-            this.nodes = [];
-            this.connections = [];
-            this.render();
-            this.addDefaultStartNode();
-            this.currentPrompt = '';
-            this.currentRunId = null;
-            this.clearRunId();
-            if (this.chatMessages) {
-                this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
-            }
-            this.setWorkflowState('idle');
-        });
         }
 
         const zoomInBtn = document.getElementById('btn-zoom-in');
@@ -1334,12 +1354,12 @@ export class WorkflowEditor {
         this.renderNodeForm(node, body);
         el.appendChild(body);
 
-        // Ports
-        this.renderPorts(node, el);
-
         if (this.nodesLayer) {
             this.nodesLayer.appendChild(el);
         }
+
+        // Render ports after mount so row-based offsets can be measured correctly.
+        this.renderPorts(node, el);
     }
 
     updateNodeHeader(node: any) {

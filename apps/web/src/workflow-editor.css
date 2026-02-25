@@ -976,12 +976,14 @@ path.connection-line.active {
     justify-content: center;
 }
 
-.run-button:disabled {
+.run-button:disabled,
+.canvas-clear:disabled {
     pointer-events: auto;
     cursor: not-allowed;
 }
 
-.run-button:disabled[data-disabled-hint]:hover::after {
+.run-button:disabled[data-disabled-hint]:hover::after,
+.canvas-clear:disabled[data-disabled-hint]:hover::after {
     content: attr(data-disabled-hint);
     position: absolute;
     left: 50%;
@@ -1002,7 +1004,8 @@ path.connection-line.active {
     box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
 }
 
-.run-button:disabled[data-disabled-hint]:hover::before {
+.run-button:disabled[data-disabled-hint]:hover::before,
+.canvas-clear:disabled[data-disabled-hint]:hover::before {
     content: '';
     position: absolute;
     left: 50%;
@@ -1012,4 +1015,16 @@ path.connection-line.active {
     border-right: 6px solid transparent;
     border-top: 6px solid var(--Colors-Backgrounds-Main-Top);
     z-index: 31;
+}
+
+/* Canvas clear sits at the lower-left edge; avoid clipping the hint bubble */
+.canvas-clear:disabled[data-disabled-hint]:hover::after {
+    left: 0;
+    transform: none;
+    max-width: min(320px, calc(100vw - 48px));
+}
+
+.canvas-clear:disabled[data-disabled-hint]:hover::before {
+    left: 20px;
+    transform: none;
 }
