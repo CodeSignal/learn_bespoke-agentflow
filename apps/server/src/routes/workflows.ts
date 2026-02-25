@@ -16,13 +16,7 @@ function validateGraph(graph: WorkflowGraph | undefined): graph is WorkflowGraph
 
 async function persistResult(engine: WorkflowEngine, result: WorkflowRunResult) {
   try {
-    // Backward compatibility: fall back to reading the private graph field if the engine
-    // instance doesn't yet expose getGraph (e.g., cached build).
-    const engineAny = engine as WorkflowEngine & { getGraph?: () => WorkflowGraph };
-    const workflow =
-      typeof engineAny.getGraph === 'function'
-        ? engineAny.getGraph()
-        : (Reflect.get(engine, 'graph') as WorkflowGraph | undefined);
+    const workflow = getEngineWorkflow(engine);
 
     if (!workflow) {
       throw new Error('Workflow graph not available on engine instance');
