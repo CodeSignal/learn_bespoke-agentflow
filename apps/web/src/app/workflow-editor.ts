@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Bespoke Agent Builder - Client Logic
 
-import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
+import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
@@ -67,6 +67,9 @@ export class WorkflowEditor {
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
         this.modalCtorPromise = null;
+        this.stateReady = false;
+        this.saveTimer = null;
+        this.pollTimer = null;
         this.initSplitPanelLayout();
 
         // Bindings
@@ -81,7 +84,24 @@ export class WorkflowEditor {
         this.updateRunButton();
         this.addDefaultStartNode();
         this.upgradeLegacyNodes(true);
-        this.loadConfig().then(() => this.loadDefaultWorkflow());
+        this.loadConfig().then(async () => {
+            await this.loadInitialWorkflow();
+            this.stateReady = true;
+            this.saveWorkflowState();
+            await this.recoverRun();
+        }).catch((err) => {
+            console.error('Workflow editor initialization failed', err);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            if (this.stateReady) {
+                if (this.saveTimer !== null) {
+                    clearTimeout(this.saveTimer);
+                    this.saveTimer = null;
+                }
+                this.saveWorkflowState();
+            }
+        });
     }
 
     async getDropdownCtor() {
@@ -303,6 +323,7 @@ export class WorkflowEditor {
     }
 
     cancelRunningWorkflow() {
+        this.clearRunId();
         if (this.activeRunController) {
             this.activeRunController.abort();
             this.activeRunController = null;
@@ -616,6 +637,7 @@ export class WorkflowEditor {
             this.addDefaultStartNode();
             this.currentPrompt = '';
             this.currentRunId = null;
+            this.clearRunId();
             if (this.chatMessages) {
                 this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
             }
@@ -704,6 +726,7 @@ export class WorkflowEditor {
             data: this.getDefaultData(normalizedType)
         };
         this.nodes.push(node);
+        this.scheduleSave();
         this.renderNode(node);
         this.updateRunButton();
     }
@@ -771,6 +794,64 @@ export class WorkflowEditor {
         } catch {
             // keep hardcoded defaults
         }
+    }
+
+    static get STORAGE_KEY() { return 'agentic-workflow'; }
+    static get RUN_KEY() { return 'agentic-run-id'; }
+
+    saveWorkflowState() {
+        try {
+            localStorage.setItem(
+                WorkflowEditor.STORAGE_KEY,
+                JSON.stringify({ nodes: this.nodes, connections: this.connections }),
+            );
+        } catch {
+            // localStorage may be unavailable (private browsing quota, etc.) — fail silently
+        }
+    }
+
+    scheduleSave() {
+        if (!this.stateReady) return;
+        if (this.saveTimer !== null) clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => {
+            this.saveTimer = null;
+            this.saveWorkflowState();
+        }, 500);
+    }
+
+    saveRunId(runId) {
+        try { localStorage.setItem(WorkflowEditor.RUN_KEY, runId); } catch { /* ignore */ }
+    }
+
+    clearRunId() {
+        try { localStorage.removeItem(WorkflowEditor.RUN_KEY); } catch { /* ignore */ }
+        if (this.pollTimer !== null) {
+            clearTimeout(this.pollTimer);
+            this.pollTimer = null;
+        }
+    }
+
+    getStoredRunId() {
+        try { return localStorage.getItem(WorkflowEditor.RUN_KEY); } catch { return null; }
+    }
+
+    async loadInitialWorkflow() {
+        // 1. Try localStorage first — restores the canvas on refresh
+        try {
+            const raw = localStorage.getItem(WorkflowEditor.STORAGE_KEY);
+            if (raw) {
+                const graph = JSON.parse(raw);
+                if (graph.nodes?.length) {
+                    this.loadWorkflow(graph);
+                    return; // localStorage wins — skip server fetch
+                }
+            }
+        } catch {
+            // corrupted storage — fall through to default workflow
+        }
+
+        // 2. Fall back to server default-workflow.json (first visit or after clear)
+        await this.loadDefaultWorkflow();
     }
 
     async loadDefaultWorkflow() {
@@ -863,7 +944,7 @@ export class WorkflowEditor {
         this.nodesLayer.innerHTML = '';
         this.connectionsLayer.innerHTML = '';
         this.nodes.forEach(n => this.renderNode(n));
-        this.renderConnections();
+        this.renderConnections(); // renderConnections() already calls scheduleSave()
         this.updateRunButton();
     }
 
@@ -1089,6 +1170,7 @@ export class WorkflowEditor {
             userInput.value = node.data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
             userInput.addEventListener('input', (e) => {
                 node.data.userPrompt = e.target.value;
+                this.scheduleSave();
             });
             container.appendChild(userInput);
 
@@ -1127,6 +1209,7 @@ export class WorkflowEditor {
                 'Select effort',
                 (value) => {
                     node.data.reasoningEffort = value;
+                    this.scheduleSave();
                 }
             );
 
@@ -1252,6 +1335,7 @@ export class WorkflowEditor {
             pInput.placeholder = 'Message shown to user when approval is required';
             pInput.addEventListener('input', (e) => {
                 node.data.prompt = e.target.value;
+                this.scheduleSave();
             });
             container.appendChild(pInput);
 
@@ -1265,6 +1349,7 @@ export class WorkflowEditor {
         if(!el) return;
         const preview = el.querySelector('.node-preview');
         if(preview) preview.innerHTML = this.getNodePreviewHTML(node);
+        this.scheduleSave();
     }
 
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---
@@ -1454,6 +1539,7 @@ export class WorkflowEditor {
             path.addEventListener('mousedown', (e) => this.onConnectionLineMouseDown(e, conn, index));
             this.connectionsLayer.appendChild(path);
         });
+        this.scheduleSave();
     }
 
     getPathD(startX, startY, endX, endY) {
@@ -1703,7 +1789,7 @@ export class WorkflowEditor {
             const result = await runWorkflowStream(
                 graph,
                 (entry) => this.onLogEntry(entry),
-                { signal: controller.signal }
+                { signal: controller.signal, onStart: (id) => this.saveRunId(id) }
             );
             this.handleRunResult(result, true);
 
@@ -1734,6 +1820,7 @@ export class WorkflowEditor {
             this.showApprovalMessage(pausedNodeId);
             this.setWorkflowState('paused');
         } else if (result.status === 'completed') {
+            this.clearRunId();
             this.clearApprovalMessage();
             if (hasLlmError) {
                 this.appendStatusMessage('Failed', 'failed');
@@ -1744,6 +1831,7 @@ export class WorkflowEditor {
             this.setWorkflowState('idle');
             this.currentRunId = null;
         } else if (result.status === 'failed') {
+            this.clearRunId();
             this.clearApprovalMessage();
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
@@ -1756,6 +1844,77 @@ export class WorkflowEditor {
                 this.setWorkflowState('idle');
             }
         }
+    }
+
+    async recoverRun() {
+        const runId = this.getStoredRunId();
+        if (!runId) return;
+
+        let result;
+        try {
+            result = await fetchRun(runId);
+        } catch {
+            // Transient error (network blip, server 5xx) — don't clear the stored
+            // runId so recovery can be reattempted on the next page load.
+            return;
+        }
+        if (!result) { this.clearRunId(); return; } // 404 — run genuinely gone
+
+        if (result.status === 'running') {
+            // Engine still executing on server — show partial chat and poll for updates
+            this.currentRunId = runId;
+            this.renderChatFromLogs(result.logs);
+            this.showAgentSpinner();
+            this.setWorkflowState('running');
+            this.pollForRun(runId, result.logs.length);
+        } else if (result.status === 'paused' && !result.waitingForInput) {
+            // Engine was lost (server restarted before our fix, or corrupt record) —
+            // the run can't be resumed; show what ran and return to idle.
+            this.clearRunId();
+            this.renderChatFromLogs(result.logs);
+            this.appendStatusMessage('Previous paused run was lost (server restarted).', 'failed');
+            this.setWorkflowState('idle');
+        } else {
+            // completed, failed, or paused-with-waitingForInput —
+            // handleRunResult covers all three cases
+            // (fromStream=false → it calls renderChatFromLogs internally)
+            this.handleRunResult(result);
+            if (result.status !== 'paused') this.clearRunId();
+        }
+    }
+
+    pollForRun(runId, knownLogCount) {
+        this.pollTimer = setTimeout(async () => {
+            this.pollTimer = null;
+            let result;
+            try {
+                result = await fetchRun(runId);
+            } catch {
+                // Transient error — keep the runId and retry on next poll cycle.
+                if (this.getStoredRunId() === runId) this.pollForRun(runId, knownLogCount);
+                return;
+            }
+            // Guard: bail out if this run was cancelled or replaced while the
+            // request was in-flight (clearRunId() can't cancel an already-fired timer).
+            if (this.getStoredRunId() !== runId) return;
+            if (!result) {
+                // 404 — run is genuinely gone from server and disk
+                this.clearRunId();
+                this.setWorkflowState('idle');
+                return;
+            }
+            // Re-render chat if new log entries arrived since last poll
+            const logs = Array.isArray(result.logs) ? result.logs : [];
+            if (logs.length > knownLogCount) {
+                this.renderChatFromLogs(logs);
+            }
+            if (result.status === 'running') {
+                this.pollForRun(runId, logs.length); // keep polling
+            } else {
+                this.handleRunResult(result);
+                if (result.status !== 'paused') this.clearRunId();
+            }
+        }, 2000);
     }
 
     async submitApprovalDecision(decision) {

@@ -2,6 +2,7 @@ import type { ApprovalInput, WorkflowGraph, WorkflowLogEntry, WorkflowRunResult 
 
 type RequestOptions = {
   signal?: AbortSignal;
+  onStart?: (runId: string) => void;
 };
 
 async function request<T>(url: string, body: unknown, options: RequestOptions = {}): Promise<T> {
@@ -85,8 +86,11 @@ export async function runWorkflowStream(
           entry?: WorkflowLogEntry;
           result?: WorkflowRunResult;
           message?: string;
+          runId?: string;
         };
-        if (parsed.type === 'log' && parsed.entry) {
+        if (parsed.type === 'start' && parsed.runId) {
+          options.onStart?.(parsed.runId);
+        } else if (parsed.type === 'log' && parsed.entry) {
           onLog(parsed.entry);
         } else if (parsed.type === 'done' && parsed.result) {
           result = parsed.result;
@@ -132,4 +136,13 @@ export function resumeWorkflow(
   options: RequestOptions = {}
 ): Promise<WorkflowRunResult> {
   return request<WorkflowRunResult>('/api/resume', { runId, input }, options);
+}
+
+export async function fetchRun(runId: string): Promise<WorkflowRunResult | null> {
+  const res = await fetch(`/api/run/${encodeURIComponent(runId)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to fetch run ${runId}: HTTP ${res.status}`);
+  }
+  return res.json() as Promise<WorkflowRunResult>;
 }

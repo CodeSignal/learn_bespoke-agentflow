@@ -32,7 +32,10 @@ async function persistResult(engine: WorkflowEngine, result: WorkflowRunResult) 
       runId: result.runId,
       workflow,
       logs: result.logs,
-      status: result.status
+      status: result.status,
+      state: result.state,
+      currentNodeId: result.currentNodeId,
+      waitingForInput: result.waitingForInput
     };
 
     await saveRunRecord(config.runsDir, record);
@@ -117,6 +120,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         onLog: (entry) => sendEvent({ type: 'log', entry })
       });
       addWorkflow(engine);
+      sendEvent({ type: 'start', runId });
 
       const result = await engine.run();
       await persistResult(engine, result);
@@ -182,6 +186,46 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to read default workflow', message);
       res.status(500).json({ error: 'Failed to read default workflow', details: message });
+    }
+  });
+
+  router.get('/run/:runId', (req: Request, res: Response) => {
+    const { runId } = req.params;
+
+    // Reject anything that isn't a plain numeric timestamp to prevent path traversal
+    if (!/^\d+$/.test(runId)) {
+      res.status(400).json({ error: 'Invalid runId' });
+      return;
+    }
+
+    // Check in-memory first — catches engines that are still running or paused
+    const engine = getWorkflow(runId);
+    if (engine) {
+      res.json(engine.getResult());
+      return;
+    }
+
+    // Fall back to the persisted run record on disk
+    const filePath = path.join(config.runsDir, `run_${runId}.json`);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    try {
+      const record = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as WorkflowRunRecord;
+      // Reconstruct WorkflowRunResult using persisted fields where available
+      const result: WorkflowRunResult = {
+        runId: record.runId,
+        status: record.status,
+        logs: record.logs,
+        state: record.state ?? {},
+        waitingForInput: record.waitingForInput ?? false,
+        currentNodeId: record.currentNodeId ?? null,
+      };
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: 'Failed to read run record', details: message });
     }
   });
 

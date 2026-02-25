@@ -36,6 +36,18 @@ export interface WorkflowEngineInitOptions {
   llm?: WorkflowLLM;
   timestampFn?: () => string;
   onLog?: (entry: WorkflowLogEntry) => void;
+  /**
+   * Restore a previously paused engine to its exact saved state.
+   * When provided, the constructor applies this snapshot over the default
+   * field initialisers — `resume()` can then be called directly without `run()`.
+   */
+  initialState?: {
+    state: Record<string, unknown>;
+    currentNodeId: string | null;
+    status: WorkflowStatus;
+    waitingForInput: boolean;
+    logs: WorkflowLogEntry[];
+  };
 }
 
 const DEFAULT_REASONING = 'low';
@@ -81,6 +93,14 @@ export class WorkflowEngine {
     this.llm = options.llm ?? new MissingLLM();
     this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
     this.onLog = options.onLog;
+
+    if (options.initialState) {
+      this.state = { ...options.initialState.state };
+      this.logs = [...options.initialState.logs];
+      this.status = options.initialState.status;
+      this.currentNodeId = options.initialState.currentNodeId;
+      this.waitingForInput = options.initialState.waitingForInput;
+    }
   }
 
   getRunId(): string {
