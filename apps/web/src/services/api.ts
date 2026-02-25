@@ -139,11 +139,10 @@ export function resumeWorkflow(
 }
 
 export async function fetchRun(runId: string): Promise<WorkflowRunResult | null> {
-  try {
-    const res = await fetch(`/api/run/${runId}`);
-    if (!res.ok) return null;
-    return res.json() as Promise<WorkflowRunResult>;
-  } catch {
-    return null;
+  const res = await fetch(`/api/run/${encodeURIComponent(runId)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`Failed to fetch run ${runId}: HTTP ${res.status}`);
   }
+  return res.json() as Promise<WorkflowRunResult>;
 }

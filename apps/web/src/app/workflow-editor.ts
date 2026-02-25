@@ -89,6 +89,8 @@ export class WorkflowEditor {
             this.stateReady = true;
             this.saveWorkflowState();
             await this.recoverRun();
+        }).catch((err) => {
+            console.error('Workflow editor initialization failed', err);
         });
 
         window.addEventListener('beforeunload', () => {
@@ -1848,8 +1850,15 @@ export class WorkflowEditor {
         const runId = this.getStoredRunId();
         if (!runId) return;
 
-        const result = await fetchRun(runId);
-        if (!result) { this.clearRunId(); return; }
+        let result;
+        try {
+            result = await fetchRun(runId);
+        } catch {
+            // Transient error (network blip, server 5xx) — don't clear the stored
+            // runId so recovery can be reattempted on the next page load.
+            return;
+        }
+        if (!result) { this.clearRunId(); return; } // 404 — run genuinely gone
 
         if (result.status === 'running') {
             // Engine still executing on server — show partial chat and poll for updates
@@ -1858,8 +1867,16 @@ export class WorkflowEditor {
             this.showAgentSpinner();
             this.setWorkflowState('running');
             this.pollForRun(runId, result.logs.length);
+        } else if (result.status === 'paused' && !result.waitingForInput) {
+            // Engine was lost (server restarted before our fix, or corrupt record) —
+            // the run can't be resumed; show what ran and return to idle.
+            this.clearRunId();
+            this.renderChatFromLogs(result.logs);
+            this.appendStatusMessage('Previous paused run was lost (server restarted).', 'failed');
+            this.setWorkflowState('idle');
         } else {
-            // completed, failed, or paused — handleRunResult covers all three cases
+            // completed, failed, or paused-with-waitingForInput —
+            // handleRunResult covers all three cases
             // (fromStream=false → it calls renderChatFromLogs internally)
             this.handleRunResult(result);
             if (result.status !== 'paused') this.clearRunId();
@@ -1869,21 +1886,30 @@ export class WorkflowEditor {
     pollForRun(runId, knownLogCount) {
         this.pollTimer = setTimeout(async () => {
             this.pollTimer = null;
-            const result = await fetchRun(runId);
+            let result;
+            try {
+                result = await fetchRun(runId);
+            } catch {
+                // Transient error — keep the runId and retry on next poll cycle.
+                if (this.getStoredRunId() === runId) this.pollForRun(runId, knownLogCount);
+                return;
+            }
             // Guard: bail out if this run was cancelled or replaced while the
             // request was in-flight (clearRunId() can't cancel an already-fired timer).
             if (this.getStoredRunId() !== runId) return;
             if (!result) {
+                // 404 — run is genuinely gone from server and disk
                 this.clearRunId();
                 this.setWorkflowState('idle');
                 return;
             }
             // Re-render chat if new log entries arrived since last poll
-            if (result.logs.length > knownLogCount) {
-                this.renderChatFromLogs(result.logs);
+            const logs = Array.isArray(result.logs) ? result.logs : [];
+            if (logs.length > knownLogCount) {
+                this.renderChatFromLogs(logs);
             }
             if (result.status === 'running') {
-                this.pollForRun(runId, result.logs.length); // keep polling
+                this.pollForRun(runId, logs.length); // keep polling
             } else {
                 this.handleRunResult(result);
                 if (result.status !== 'paused') this.clearRunId();
