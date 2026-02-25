@@ -39,6 +39,14 @@ export interface WorkflowEngineInitOptions {
 }
 
 const DEFAULT_REASONING = 'low';
+const IF_CONDITION_HANDLE_PREFIX = 'condition-';
+
+type IfConditionOperator = 'equal' | 'contains';
+
+interface IfCondition {
+  operator: IfConditionOperator;
+  value: string;
+}
 
 class MissingLLM implements WorkflowLLM {
   async respond(): Promise<string> {
@@ -219,10 +227,13 @@ export class WorkflowEngine {
             const nextNode = this.graph.nodes.find((n) => n.id === nextNodeId);
             if (nextNode) {
               await this.processNode(nextNode);
-              return;
+            } else {
+              this.status = 'completed';
             }
+          } else {
+            this.status = 'completed';
           }
-          break;
+          return;
         }
         case 'approval':
           this.state.pre_approval_output = this.state.previous_output;
@@ -275,7 +286,7 @@ export class WorkflowEngine {
       case 'start':
         return 'start node';
       case 'if':
-        return 'if/else node';
+        return 'condition node';
       case 'approval':
         return 'approval node';
       case 'end':
@@ -286,23 +297,63 @@ export class WorkflowEngine {
   }
 
   private evaluateIfNode(node: WorkflowNode): string | null {
-    const condition = (node.data?.condition as string) || '';
-    const input = JSON.stringify(this.state.previous_output || '');
-    const match = input.toLowerCase().includes(condition.toLowerCase());
-    this.log(
-      node.id,
-      'logic_check',
-      `Condition "${condition}" evaluated as ${match ? 'true' : 'false'}`
-    );
-    const trueConn = this.graph.connections.find(
-      (c) => c.source === node.id && c.sourceHandle === 'true'
-    );
+    const input = this.getIfInputString();
+    const normalizedInput = input.toLowerCase();
+    const conditions = this.getIfConditions(node);
+
+    for (let index = 0; index < conditions.length; index += 1) {
+      const condition = conditions[index];
+      const match = this.evaluateIfCondition(normalizedInput, condition);
+      this.log(
+        node.id,
+        'logic_check',
+        `Condition ${index + 1} (${condition.operator} "${condition.value}") evaluated as ${match ? 'true' : 'false'}`
+      );
+
+      if (!match) continue;
+      const conn = this.graph.connections.find((c) => {
+        if (c.source !== node.id) return false;
+        if (c.sourceHandle === `${IF_CONDITION_HANDLE_PREFIX}${index}`) return true;
+        return index === 0 && c.sourceHandle === 'true';
+      });
+      if (conn) return conn.target;
+    }
+
     const falseConn = this.graph.connections.find(
       (c) => c.source === node.id && c.sourceHandle === 'false'
     );
-    if (match && trueConn) return trueConn.target;
-    if (!match && falseConn) return falseConn.target;
+    if (falseConn) return falseConn.target;
     return null;
+  }
+
+  private getIfConditions(node: WorkflowNode): IfCondition[] {
+    const legacyCondition = typeof node.data?.condition === 'string' ? node.data.condition : '';
+    const conditionsData = node.data?.conditions;
+    const rawConditions =
+      Array.isArray(conditionsData) && conditionsData.length > 0
+        ? (conditionsData as Array<Record<string, unknown>>)
+        : [{ operator: 'contains', value: legacyCondition }];
+
+    return rawConditions.map((condition) => ({
+      operator: condition.operator === 'contains' ? 'contains' : 'equal',
+      value: typeof condition.value === 'string' ? condition.value : ''
+    }));
+  }
+
+  private getIfInputString(): string {
+    const previousOutput = this.state.previous_output;
+    if (typeof previousOutput === 'string') return previousOutput;
+    if (previousOutput === undefined || previousOutput === null) return '';
+    return JSON.stringify(previousOutput);
+  }
+
+  private evaluateIfCondition(input: string, condition: IfCondition): boolean {
+    const expectedValue = condition.value.trim().toLowerCase();
+    if (!expectedValue) return false;
+    if (condition.operator === 'contains') {
+      return input.includes(expectedValue);
+    }
+    return input === expectedValue;
   }
 
   private async executeAgentNode(node: WorkflowNode): Promise<string> {

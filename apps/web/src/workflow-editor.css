@@ -435,6 +435,8 @@ path.connection-line.active {
 .port-out { right: -8px; }
 .port-true { top: 45px; border-color: var(--Colors-Alert-Success-Default); }
 .port-false { top: 75px; border-color: var(--Colors-Alert-Error-Default); }
+.port-condition { border-color: var(--Colors-Primary-Medium); }
+.port-condition-fallback { border-color: var(--Colors-Alert-Error-Default); }
 
 /* Form Styles inside Node */
 .node-form label {
@@ -452,6 +454,35 @@ path.connection-line.active {
 
 .ds-dropdown {
     width: 100%;
+}
+
+.condition-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-s);
+}
+
+.condition-row {
+    display: grid;
+    grid-template-columns: 140px 1fr auto;
+    gap: var(--UI-Spacing-spacing-xs);
+    align-items: center;
+}
+
+.condition-row .input {
+    margin: 0;
+}
+
+.add-condition-btn {
+    width: 100%;
+    margin-top: var(--UI-Spacing-spacing-s);
+    justify-content: center;
+    gap: var(--UI-Spacing-spacing-xs);
+}
+
+.condition-remove-btn {
+    width: var(--UI-Input-sm);
+    height: var(--UI-Input-sm);
 }
 
 .textarea-input {

@@ -23,7 +23,7 @@ The run button is disabled if any of these are true:
 - Any connection references a missing source or target node.
 - The `Start` node has no outgoing connection.
 - Nothing is reachable after `Start` (for example only `Start`, or `Start` not connected to any executable node).
-- A reachable `If / Else` node has neither a `true` nor a `false` outgoing branch.
+- A reachable `Condition` node has neither a condition branch nor a `false` fallback branch.
 - A reachable `Approval` node has neither an `approve` nor a `reject` outgoing branch.
 
 ## Explicitly Allowed
@@ -31,7 +31,7 @@ The run button is disabled if any of these are true:
 These cases are currently allowed and do not block run:
 - Circular connections (loops).
 - Unreachable/disconnected nodes not on the reachable path from `Start`.
-- `If / Else` with only one branch connected (at least one is required).
+- `Condition` with only one branch connected (at least one is required).
 - `Approval` with only one branch connected (at least one is required).
 
 ## Backend Runtime Constraint (Not a UI Preflight Rule)

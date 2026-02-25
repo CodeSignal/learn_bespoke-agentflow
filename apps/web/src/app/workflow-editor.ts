@@ -1,7 +1,6 @@
 // @ts-nocheck
 // Bespoke Agent Builder - Client Logic
 
-import type { WorkflowGraph } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
@@ -17,6 +16,15 @@ const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
     'gpt-5-mini': ['low', 'medium', 'high'],
     'gpt-5.1': ['none', 'low', 'medium', 'high']
 };
+const IF_CONDITION_HANDLE_PREFIX = 'condition-';
+const IF_FALLBACK_HANDLE = 'false';
+const IF_PORT_BASE_TOP = 45;
+const IF_PORT_STEP = 30;
+const IF_CONDITION_OPERATORS = [
+    { value: 'equal', label: 'Equal' },
+    { value: 'contains', label: 'Contains' }
+];
+const DEFAULT_IF_CONDITION = { operator: 'equal', value: '' };
 
 export class WorkflowEditor {
     constructor() {
@@ -192,6 +200,87 @@ export class WorkflowEditor {
         return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
     }
 
+    normalizeIfCondition(condition) {
+        const normalizedOperator = condition?.operator === 'contains' ? 'contains' : 'equal';
+        const rawValue = condition?.value;
+        return {
+            operator: normalizedOperator,
+            value: typeof rawValue === 'string' ? rawValue : ''
+        };
+    }
+
+    getIfConditionHandle(index) {
+        return `${IF_CONDITION_HANDLE_PREFIX}${index}`;
+    }
+
+    getIfConditionIndexFromHandle(handle) {
+        if (handle === 'true') return 0;
+        if (typeof handle !== 'string' || !handle.startsWith(IF_CONDITION_HANDLE_PREFIX)) return null;
+        const parsedIndex = Number.parseInt(handle.slice(IF_CONDITION_HANDLE_PREFIX.length), 10);
+        return Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : null;
+    }
+
+    getIfPortTop(index) {
+        return IF_PORT_BASE_TOP + (index * IF_PORT_STEP);
+    }
+
+    getIfConditions(node) {
+        if (!node.data) node.data = {};
+        if (!Array.isArray(node.data.conditions) || node.data.conditions.length === 0) {
+            node.data.conditions = [{ ...DEFAULT_IF_CONDITION }];
+        }
+        node.data.conditions = node.data.conditions.map((condition) => this.normalizeIfCondition(condition));
+        return node.data.conditions;
+    }
+
+    removeIfCondition(node, conditionIndex) {
+        const conditions = this.getIfConditions(node);
+        if (conditions.length <= 1) return;
+
+        node.data.conditions = conditions.filter((_, index) => index !== conditionIndex);
+        this.connections = this.connections.reduce((nextConnections, connection) => {
+            if (connection.source !== node.id) {
+                nextConnections.push(connection);
+                return nextConnections;
+            }
+
+            const sourceIndex = this.getIfConditionIndexFromHandle(connection.sourceHandle);
+            if (sourceIndex === null) {
+                nextConnections.push(connection);
+                return nextConnections;
+            }
+            if (sourceIndex === conditionIndex) {
+                return nextConnections;
+            }
+            if (sourceIndex > conditionIndex) {
+                nextConnections.push({
+                    ...connection,
+                    sourceHandle: this.getIfConditionHandle(sourceIndex - 1)
+                });
+                return nextConnections;
+            }
+
+            nextConnections.push(connection);
+            return nextConnections;
+        }, []);
+    }
+
+    getOutputPortCenterYOffset(node, sourceHandle) {
+        if (node.type === 'if') {
+            if (sourceHandle === IF_FALLBACK_HANDLE) {
+                return this.getIfPortTop(this.getIfConditions(node).length) + 6;
+            }
+            const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
+            if (conditionIndex !== null) {
+                return this.getIfPortTop(conditionIndex) + 6;
+            }
+        }
+
+        if (sourceHandle === 'approve') return 51;
+        if (sourceHandle === 'reject') return 81;
+        return 24;
+    }
+
     setWorkflowState(state) {
         this.workflowState = state;
         this.updateRunButton();
@@ -277,10 +366,10 @@ export class WorkflowEditor {
             if (!reachable.has(node.id)) continue;
             if (node.type === 'if') {
                 const outgoing = adjacency.get(node.id) || [];
-                const hasTrue = outgoing.some((conn) => conn.sourceHandle === 'true');
-                const hasFalse = outgoing.some((conn) => conn.sourceHandle === 'false');
-                if (!hasTrue && !hasFalse) {
-                    return 'Connect at least one branch for each If / Else node.';
+                const hasConditionBranch = outgoing.some((conn) => this.getIfConditionIndexFromHandle(conn.sourceHandle) !== null);
+                const hasFallbackBranch = outgoing.some((conn) => conn.sourceHandle === IF_FALLBACK_HANDLE);
+                if (!hasConditionBranch && !hasFallbackBranch) {
+                    return 'Connect at least one branch for each Condition node.';
                 }
             }
             if (node.type === 'approval' || node.type === 'input') {
@@ -549,7 +638,7 @@ export class WorkflowEditor {
     initWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const ws = new WebSocket(`${protocol}//${window.location.host}`);
-        ws.onmessage = (event) => {
+        ws.onmessage = (_event) => {
             // Placeholder for future real-time feedback
         };
     }
@@ -621,6 +710,7 @@ export class WorkflowEditor {
 
     upgradeLegacyNodes(shouldRender = false) {
         let updated = false;
+        const ifNodeIds = new Set();
         this.nodes.forEach(node => {
             if (node.type === 'input') {
                 node.type = 'approval';
@@ -629,7 +719,33 @@ export class WorkflowEditor {
                 }
                 updated = true;
             }
+
+            if (node.type === 'if') {
+                ifNodeIds.add(node.id);
+                if (!node.data) node.data = {};
+                const rawLegacyCondition = typeof node.data.condition === 'string' ? node.data.condition : '';
+                const rawConditions = Array.isArray(node.data.conditions) && node.data.conditions.length > 0
+                    ? node.data.conditions
+                    : [{ operator: 'contains', value: rawLegacyCondition }];
+                node.data.conditions = rawConditions.map((condition) => this.normalizeIfCondition(condition));
+                if (node.data.conditions.length === 0) {
+                    node.data.conditions = [{ ...DEFAULT_IF_CONDITION }];
+                }
+                if ('condition' in node.data) {
+                    delete node.data.condition;
+                }
+                updated = true;
+            }
         });
+
+        this.connections.forEach((connection) => {
+            if (!ifNodeIds.has(connection.source)) return;
+            if (connection.sourceHandle === 'true') {
+                connection.sourceHandle = this.getIfConditionHandle(0);
+                updated = true;
+            }
+        });
+
         if (updated && shouldRender) {
             this.render();
         } else if (updated) {
@@ -715,7 +831,10 @@ export class WorkflowEditor {
                     collapsed: true
                 };
             case 'if': 
-                return { condition: '', collapsed: true };
+                return {
+                    conditions: [{ ...DEFAULT_IF_CONDITION }],
+                    collapsed: true
+                };
             case 'approval': 
                 return { prompt: 'Review and approve this step.', collapsed: true };
             case 'start':
@@ -886,7 +1005,7 @@ export class WorkflowEditor {
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
         if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
-        if (node.type === 'if') return '<span class="icon icon-path icon-primary"></span>If/Else';
+        if (node.type === 'if') return '<span class="icon icon-path icon-primary"></span>Condition';
         if (node.type === 'approval') return '<span class="icon icon-chermark-badge icon-primary"></span>User Approval';
         return `<span class="icon icon-primary"></span>${node.type}`;
     }
@@ -898,7 +1017,14 @@ export class WorkflowEditor {
             const model = (node.data.model || 'gpt-5').toUpperCase();
             text = `${escapeHtml(name)} • ${escapeHtml(model)}`;
         } else if (node.type === 'if') {
-            text = `Condition: ${escapeHtml(node.data.condition || '...')}`;
+            const conditions = this.getIfConditions(node);
+            if (conditions.length === 1) {
+                const condition = conditions[0];
+                const operator = condition.operator === 'contains' ? 'Contains' : 'Equal';
+                text = `Condition: ${operator} "${escapeHtml(condition.value || '...')}"`;
+            } else {
+                text = `${conditions.length} conditions`;
+            }
         } else if (node.type === 'approval') {
             text = escapeHtml(node.data.prompt || 'Approval message required');
         } else if (node.type === 'start') {
@@ -1048,16 +1174,74 @@ export class WorkflowEditor {
             container.appendChild(toolsList);
 
         } else if (node.type === 'if') {
-            container.appendChild(buildLabel('Condition (Text contains)'));
-            const condInput = document.createElement('input');
-            condInput.type = 'text';
-            condInput.className = 'input';
-            condInput.value = node.data.condition || '';
-            condInput.addEventListener('input', (e) => {
-                node.data.condition = e.target.value;
-                this.updatePreview(node);
+            const conditions = this.getIfConditions(node);
+            container.appendChild(buildLabel('Conditions'));
+
+            const conditionsList = document.createElement('div');
+            conditionsList.className = 'condition-list';
+
+            conditions.forEach((condition, index) => {
+                const row = document.createElement('div');
+                row.className = 'condition-row';
+
+                const operatorDropdown = document.createElement('div');
+                operatorDropdown.className = 'ds-dropdown';
+                row.appendChild(operatorDropdown);
+                this.setupDropdown(
+                    operatorDropdown,
+                    IF_CONDITION_OPERATORS,
+                    condition.operator,
+                    'Select operator',
+                    (value) => {
+                        conditions[index].operator = value;
+                        node.data.conditions = conditions.map((entry) => this.normalizeIfCondition(entry));
+                        this.updatePreview(node);
+                    }
+                );
+
+                const valueInput = document.createElement('input');
+                valueInput.type = 'text';
+                valueInput.className = 'input';
+                valueInput.placeholder = 'Value';
+                valueInput.value = condition.value || '';
+                valueInput.addEventListener('input', (e) => {
+                    conditions[index].value = e.target.value;
+                    node.data.conditions = conditions.map((entry) => this.normalizeIfCondition(entry));
+                    this.updatePreview(node);
+                });
+                row.appendChild(valueInput);
+
+                if (conditions.length > 1) {
+                    const removeConditionButton = document.createElement('button');
+                    removeConditionButton.type = 'button';
+                    removeConditionButton.className = 'button button-tertiary button-small icon-btn condition-remove-btn';
+                    removeConditionButton.title = `Remove condition ${index + 1}`;
+                    removeConditionButton.innerHTML = '<span class="icon icon-trash icon-danger" aria-hidden="true"></span>';
+                    removeConditionButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.removeIfCondition(node, index);
+                        this.updatePreview(node);
+                        this.render();
+                    });
+                    row.appendChild(removeConditionButton);
+                }
+
+                conditionsList.appendChild(row);
             });
-            container.appendChild(condInput);
+
+            container.appendChild(conditionsList);
+
+            const addConditionButton = document.createElement('button');
+            addConditionButton.type = 'button';
+            addConditionButton.className = 'button button-secondary button-small add-condition-btn';
+            addConditionButton.textContent = '+ Add Condition';
+            addConditionButton.addEventListener('click', (e) => {
+                e.preventDefault();
+                node.data.conditions = [...conditions, { ...DEFAULT_IF_CONDITION }];
+                this.updatePreview(node);
+                this.render();
+            });
+            container.appendChild(addConditionButton);
 
         } else if (node.type === 'approval') {
             container.appendChild(buildLabel('Approval Message'));
@@ -1093,8 +1277,30 @@ export class WorkflowEditor {
 
         if (node.type !== 'end') {
             if (node.type === 'if') {
-                el.appendChild(this.createPort(node.id, 'true', 'port-out port-true', 'True'));
-                el.appendChild(this.createPort(node.id, 'false', 'port-out port-false', 'False'));
+                const conditions = this.getIfConditions(node);
+                conditions.forEach((condition, index) => {
+                    const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
+                    const conditionValue = condition.value || '';
+                    const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                    el.appendChild(
+                        this.createPort(
+                            node.id,
+                            this.getIfConditionHandle(index),
+                            'port-out port-condition',
+                            title,
+                            this.getIfPortTop(index)
+                        )
+                    );
+                });
+                el.appendChild(
+                    this.createPort(
+                        node.id,
+                        IF_FALLBACK_HANDLE,
+                        'port-out port-condition-fallback',
+                        'False fallback',
+                        this.getIfPortTop(conditions.length)
+                    )
+                );
             } else if (node.type === 'approval') {
                 el.appendChild(this.createPort(node.id, 'approve', 'port-out port-true', 'Approve'));
                 el.appendChild(this.createPort(node.id, 'reject', 'port-out port-false', 'Reject'));
@@ -1104,10 +1310,13 @@ export class WorkflowEditor {
         }
     }
 
-    createPort(nodeId, handle, className, title = '') {
+    createPort(nodeId, handle, className, title = '', top = null) {
         const port = document.createElement('div');
         port.className = `port ${className}`;
         if (title) port.title = title;
+        if (typeof top === 'number') {
+            port.style.top = `${top}px`;
+        }
         port.dataset.nodeId = nodeId;
         port.dataset.handle = handle;
         
@@ -1189,10 +1398,7 @@ export class WorkflowEditor {
         const sourceNode = this.nodes.find(n => n.id === connection.source);
         if (!sourceNode) return;
         
-        let startYOffset = 24;
-        if (connection.sourceHandle === 'true' || connection.sourceHandle === 'approve') startYOffset = 51;
-        if (connection.sourceHandle === 'false' || connection.sourceHandle === 'reject') startYOffset = 81;
-        if (connection.sourceHandle === 'output' && sourceNode.type === 'agent') startYOffset = 24;
+        const startYOffset = this.getOutputPortCenterYOffset(sourceNode, connection.sourceHandle);
         
         const startX = sourceNode.x + this.getNodeWidth(sourceNode);
         const startY = sourceNode.y + startYOffset;
@@ -1230,10 +1436,7 @@ export class WorkflowEditor {
             const targetNode = this.nodes.find(n => n.id === conn.target);
             if (!sourceNode || !targetNode) return;
 
-            let startYOffset = 24; // center of port
-            if (conn.sourceHandle === 'true' || conn.sourceHandle === 'approve') startYOffset = 51;
-            if (conn.sourceHandle === 'false' || conn.sourceHandle === 'reject') startYOffset = 81;
-            if (conn.sourceHandle === 'output' && sourceNode.type === 'agent') startYOffset = 24;
+            const startYOffset = this.getOutputPortCenterYOffset(sourceNode, conn.sourceHandle);
 
             // Calculate start/end points based on node position + standard port offsets
             const startX = sourceNode.x + this.getNodeWidth(sourceNode);
