@@ -1325,6 +1325,7 @@ export class WorkflowEditor {
             duplicateBtn.className = 'button button-tertiary button-small icon-btn duplicate';
             duplicateBtn.innerHTML = '<span class="icon icon-content icon-primary"></span>';
             duplicateBtn.title = 'Duplicate Agent';
+            duplicateBtn.setAttribute('data-tooltip', 'Duplicate Agent');
             duplicateBtn.addEventListener('mousedown', (e: any) => {
                 e.stopPropagation();
                 this.duplicateAgentNode(node);
@@ -1341,7 +1342,9 @@ export class WorkflowEditor {
             collapseBtn.innerHTML = '<span class="icon icon-data-engineering icon-primary"></span>';
             updateCollapseIcon = () => {
                 if (!collapseBtn) return;
-                collapseBtn.title = node.data.collapsed ? 'Open settings' : 'Close settings';
+                const tooltip = node.data.collapsed ? 'Open settings' : 'Close settings';
+                collapseBtn.title = tooltip;
+                collapseBtn.setAttribute('data-tooltip', tooltip);
                 el.classList.toggle('expanded', !node.data.collapsed);
             };
             updateCollapseIcon();
@@ -1362,6 +1365,7 @@ export class WorkflowEditor {
             delBtn.className = 'button button-tertiary button-small icon-btn delete';
             delBtn.innerHTML = '<span class="icon icon-trash icon-danger"></span>';
             delBtn.title = 'Delete Node';
+            delBtn.setAttribute('data-tooltip', 'Delete Node');
             delBtn.addEventListener('mousedown', async (e: any) => {
                  e.stopPropagation(); 
                  const confirmed = await this.openConfirmModal({
