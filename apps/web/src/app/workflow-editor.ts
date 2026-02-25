@@ -22,6 +22,7 @@ const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
 const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
 const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
+const PREVIOUS_OUTPUT_TEMPLATE = '{{PREVIOUS_OUTPUT}}';
 const IF_CONDITION_OPERATORS = [
     { value: 'equal', label: 'Equal' },
     { value: 'contains', label: 'Contains' }
@@ -448,6 +449,14 @@ export class WorkflowEditor {
         // offsetWidth forces a synchronous reflow that returns the correct value.
         const el = document.getElementById(node.id);
         return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
+    }
+
+    getUserPromptHighlightHTML(value: string): string {
+        const escapedValue = escapeHtml(value || '');
+        return escapedValue.replace(
+            /\{\{PREVIOUS_OUTPUT\}\}/g,
+            '<span class="prompt-highlight-token">{{PREVIOUS_OUTPUT}}</span>',
+        );
     }
 
     normalizeIfCondition(condition: unknown): IfCondition {
@@ -1470,15 +1479,39 @@ export class WorkflowEditor {
 
             // Input
             container.appendChild(buildLabel('Input'));
+            const userInputWrapper = document.createElement('div');
+            userInputWrapper.className = 'prompt-highlight-wrapper';
+            const userInputHighlight = document.createElement('div');
+            userInputHighlight.className = 'prompt-highlight-backdrop';
+            userInputHighlight.setAttribute('aria-hidden', 'true');
+            const userInputHighlightContent = document.createElement('div');
+            userInputHighlightContent.className = 'prompt-highlight-content';
+            userInputHighlight.appendChild(userInputHighlightContent);
             const userInput = document.createElement('textarea');
-            userInput.className = 'input textarea-input';
+            userInput.className = 'input textarea-input prompt-highlight-input';
             userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
-            userInput.value = data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
+            userInput.value = data.userPrompt ?? PREVIOUS_OUTPUT_TEMPLATE;
+            const syncUserPromptHighlight = () => {
+                userInputHighlightContent.innerHTML = this.getUserPromptHighlightHTML(userInput.value);
+                userInputHighlightContent.style.transform = `translate(${-userInput.scrollLeft}px, ${-userInput.scrollTop}px)`;
+            };
+            syncUserPromptHighlight();
+            userInput.addEventListener('focus', () => {
+                userInputWrapper.classList.add('is-editing');
+            });
+            userInput.addEventListener('blur', () => {
+                userInputWrapper.classList.remove('is-editing');
+                syncUserPromptHighlight();
+            });
             userInput.addEventListener('input', (e: any) => {
                 data.userPrompt = e.target.value;
+                syncUserPromptHighlight();
                 this.scheduleSave();
             });
-            container.appendChild(userInput);
+            userInput.addEventListener('scroll', syncUserPromptHighlight);
+            userInputWrapper.appendChild(userInputHighlight);
+            userInputWrapper.appendChild(userInput);
+            container.appendChild(userInputWrapper);
 
             // Model
             container.appendChild(buildLabel('Model'));

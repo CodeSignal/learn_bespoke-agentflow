@@ -511,6 +511,95 @@ path.connection-line.active {
     line-height: 1.4;
 }
 
+.prompt-highlight-wrapper {
+    position: relative;
+    width: 100%;
+    border-radius: var(--UI-Radius-radius-s);
+    background: var(--Colors-Input-Background-Default);
+    border: 1px solid var(--Colors-Input-Border-Default);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.prompt-highlight-wrapper:hover {
+    border-color: var(--Colors-Input-Border-Hover);
+}
+
+.prompt-highlight-wrapper:focus-within {
+    border-color: var(--Colors-Input-Border-Focus);
+    box-shadow: 0 0 0 4px var(--Colors-Input-Shadow-Focus);
+}
+
+.prompt-highlight-backdrop {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: var(--UI-Radius-radius-s);
+    padding: var(--UI-Spacing-spacing-mxs) var(--UI-Spacing-spacing-ms);
+}
+
+.prompt-highlight-content {
+    min-height: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--Colors-Input-Text-Default);
+    font-family: var(--body-family);
+    font-size: var(--Fonts-Body-Default-md);
+    font-style: normal;
+    font-weight: 400;
+    letter-spacing: -0.16px;
+    line-height: 1.4;
+    will-change: transform;
+}
+
+.prompt-highlight-token {
+    color: var(--Colors-Primary-Medium);
+    font-weight: 600;
+}
+
+.prompt-highlight-input {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+    color: transparent;
+    caret-color: var(--Colors-Input-Text-Default);
+    -webkit-text-fill-color: transparent;
+}
+
+.prompt-highlight-input:hover,
+.prompt-highlight-input:focus {
+    border: none;
+    box-shadow: none;
+}
+
+.prompt-highlight-input::placeholder {
+    color: var(--Colors-Input-Text-Placeholder);
+    -webkit-text-fill-color: var(--Colors-Input-Text-Placeholder);
+}
+
+.prompt-highlight-wrapper:not(.is-editing) .prompt-highlight-input::selection {
+    background: var(--Colors-Primary-Lightest);
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+}
+
+.prompt-highlight-wrapper.is-editing .prompt-highlight-backdrop {
+    display: none;
+}
+
+.prompt-highlight-wrapper.is-editing .prompt-highlight-input {
+    color: var(--Colors-Input-Text-Default);
+    -webkit-text-fill-color: var(--Colors-Input-Text-Default);
+}
+
+.prompt-highlight-wrapper.is-editing .prompt-highlight-input::selection {
+    background: rgba(92, 148, 255, 0.24);
+    color: inherit;
+    -webkit-text-fill-color: inherit;
+}
+
 .ds-select {
     width: 100%;
     height: var(--UI-Input-sm);
