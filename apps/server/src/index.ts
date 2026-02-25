@@ -24,8 +24,12 @@ function restorePausedRuns(runsDir: string, llm?: WorkflowLLM): void {
   let files: string[];
   try {
     files = fs.readdirSync(runsDir).filter((f) => f.startsWith('run_') && f.endsWith('.json'));
-  } catch {
-    return; // runsDir missing on very first boot (created lazily by config.ts)
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code !== 'ENOENT') {
+      logger.warn('Failed to scan runs directory %s: %s', runsDir, String(err));
+    }
+    return;
   }
 
   for (const file of files) {

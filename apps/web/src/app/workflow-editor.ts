@@ -829,6 +829,10 @@ export class WorkflowEditor {
         }
     }
 
+    getStoredRunId() {
+        try { return localStorage.getItem(WorkflowEditor.RUN_KEY); } catch { return null; }
+    }
+
     async loadInitialWorkflow() {
         // 1. Try localStorage first — restores the canvas on refresh
         try {
@@ -1841,7 +1845,7 @@ export class WorkflowEditor {
     }
 
     async recoverRun() {
-        const runId = localStorage.getItem(WorkflowEditor.RUN_KEY);
+        const runId = this.getStoredRunId();
         if (!runId) return;
 
         const result = await fetchRun(runId);
@@ -1868,7 +1872,7 @@ export class WorkflowEditor {
             const result = await fetchRun(runId);
             // Guard: bail out if this run was cancelled or replaced while the
             // request was in-flight (clearRunId() can't cancel an already-fired timer).
-            if (localStorage.getItem(WorkflowEditor.RUN_KEY) !== runId) return;
+            if (this.getStoredRunId() !== runId) return;
             if (!result) {
                 this.clearRunId();
                 this.setWorkflowState('idle');
