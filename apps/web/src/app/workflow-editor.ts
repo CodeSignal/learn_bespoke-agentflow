@@ -506,6 +506,10 @@ export class WorkflowEditor {
         }
 
         const conditionRows = Array.from(nodeEl.querySelectorAll('.condition-row')) as HTMLElement[];
+        const addConditionButton = nodeEl.querySelector('.add-condition-btn') as HTMLElement | null;
+        if (addConditionButton) {
+            return Math.round(addConditionButton.offsetTop + (addConditionButton.offsetHeight / 2) - 6);
+        }
         if (conditionRows.length === 0) {
             return this.getIfPortTop(conditions.length);
         }
