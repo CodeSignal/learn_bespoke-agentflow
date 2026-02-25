@@ -1891,6 +1891,11 @@ export class WorkflowEditor {
         if (!this.pendingApprovalRequest?.container) return;
         
         const container = this.pendingApprovalRequest.container;
+        this.renderApprovalResultCard(container, decision, note);
+        this.pendingApprovalRequest = null;
+    }
+
+    renderApprovalResultCard(container: HTMLElement, decision: 'approve' | 'reject', note: string = '') {
         container.className = 'chat-message approval-result';
         container.classList.add(decision === 'approve' ? 'approved' : 'rejected');
         
@@ -1899,19 +1904,29 @@ export class WorkflowEditor {
         const text = decision === 'approve' ? 'Approved' : 'Rejected';
         
         container.innerHTML = '';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'chat-message-label';
+        labelEl.textContent = 'Approval decision';
+        container.appendChild(labelEl);
         
         const content = document.createElement('div');
         content.className = 'approval-result-content';
+
+        const status = document.createElement('div');
+        status.className = 'approval-result-status';
         
         const iconEl = document.createElement('span');
         iconEl.className = 'approval-result-icon';
         iconEl.textContent = icon;
-        content.appendChild(iconEl);
+        status.appendChild(iconEl);
         
         const textEl = document.createElement('span');
         textEl.className = 'approval-result-text';
         textEl.textContent = text;
-        content.appendChild(textEl);
+        status.appendChild(textEl);
+
+        content.appendChild(status);
         
         if (trimmedNote) {
             const noteEl = document.createElement('div');
@@ -1921,7 +1936,6 @@ export class WorkflowEditor {
         }
         
         container.appendChild(content);
-        this.pendingApprovalRequest = null;
     }
 
     showApprovalMessage(nodeId: any) {
@@ -1933,20 +1947,33 @@ export class WorkflowEditor {
         const message = document.createElement('div');
         message.className = 'chat-message approval-request';
 
+        const labelEl = document.createElement('span');
+        labelEl.className = 'chat-message-label';
+        labelEl.textContent = 'Approval required';
+        message.appendChild(labelEl);
+
+        const body = document.createElement('div');
+        body.className = 'approval-body';
+
         const textEl = document.createElement('div');
         textEl.className = 'approval-text';
         textEl.textContent = messageText;
-        message.appendChild(textEl);
+        body.appendChild(textEl);
+
+        const helperEl = document.createElement('div');
+        helperEl.className = 'approval-helper';
+        helperEl.textContent = 'Choose how this workflow should proceed.';
+        body.appendChild(helperEl);
 
         const actions = document.createElement('div');
         actions.className = 'approval-actions';
 
         const rejectBtn = document.createElement('button');
-        rejectBtn.className = 'button button-danger reject-btn';
+        rejectBtn.className = 'button button-secondary reject-btn';
         rejectBtn.textContent = 'Reject';
 
         const approveBtn = document.createElement('button');
-        approveBtn.className = 'button button-success approve-btn';
+        approveBtn.className = 'button button-primary approve-btn';
         approveBtn.textContent = 'Approve';
 
         rejectBtn.addEventListener('click', () => this.submitApprovalDecision('reject'));
@@ -1954,7 +1981,8 @@ export class WorkflowEditor {
 
         actions.appendChild(rejectBtn);
         actions.appendChild(approveBtn);
-        message.appendChild(actions);
+        body.appendChild(actions);
+        message.appendChild(body);
 
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
@@ -1972,6 +2000,14 @@ export class WorkflowEditor {
         if (!this.pendingApprovalRequest) return;
         this.pendingApprovalRequest.approveBtn.disabled = disabled;
         this.pendingApprovalRequest.rejectBtn.disabled = disabled;
+    }
+
+    getApprovalNextNode(nodeId: string, decision: 'approve' | 'reject'): EditorNode | undefined {
+        const connection = this.connections.find(
+            (conn: any) => conn.source === nodeId && conn.sourceHandle === decision
+        );
+        if (!connection) return undefined;
+        return this.nodes.find((node: any) => node.id === connection.target);
     }
 
     extractWaitingNodeId(logs: any = []) {
@@ -2022,20 +2058,50 @@ export class WorkflowEditor {
     startChatSession(_promptText: any) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        this.showAgentSpinner();
+        if (typeof _promptText === 'string' && _promptText.trim()) {
+            this.appendChatMessage(_promptText, 'user');
+        }
     }
 
     mapLogEntryToRole(entry: any) {
         const type = entry.type || '';
         if (type.includes('llm_response')) return 'agent';
         if (type.includes('llm_error') || type === 'error') return 'error';
-        if (type.includes('input_received') || type.includes('start_prompt')) return 'user';
+        if (type.includes('input_received')) return 'user';
         return null;
     }
 
     formatLogContent(entry: any) {
         const content = entry.content;
         return typeof content === 'string' ? content : '';
+    }
+
+    getInitialPromptFromLogs(logs: any[] = []): string | null {
+        if (!Array.isArray(logs)) return null;
+        const entry = logs.find((item: any) => item?.type === 'start_prompt' && typeof item.content === 'string' && item.content.trim());
+        return entry?.content ?? null;
+    }
+
+    isApprovalInputLog(entry: any): boolean {
+        if (!entry || entry.type !== 'input_received') return false;
+        const node = this.nodes.find((n: any) => n.id === entry.nodeId);
+        return node?.type === 'approval' || node?.type === 'input';
+    }
+
+    parseApprovalInputLog(content: string): { decision: 'approve' | 'reject'; note: string } {
+        const decision = content.toLowerCase().includes('rejected') ? 'reject' : 'approve';
+        const feedbackMatch = content.match(/feedback:\s*(.*)$/i);
+        const note = feedbackMatch?.[1]?.trim() || '';
+        return { decision, note };
+    }
+
+    appendApprovalResultFromLog(content: string): void {
+        if (!this.chatMessages) return;
+        const { decision, note } = this.parseApprovalInputLog(content);
+        const message = document.createElement('div');
+        this.renderApprovalResultCard(message, decision, note);
+        this.chatMessages.appendChild(message);
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
     }
 
     getAgentNameForNode(nodeId: string): string {
@@ -2048,13 +2114,6 @@ export class WorkflowEditor {
         if (type === 'step_start') {
             const node = this.nodes.find((n: any) => n.id === entry.nodeId);
             if (node?.type === 'agent') {
-                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
-            }
-        } else if (type === 'start_prompt') {
-            // Only show the user's initial input (before any agent has responded)
-            if (entry.content && this.lastLlmResponseContent === null) {
-                this.hideAgentSpinner();
-                this.appendChatMessage(entry.content, 'user');
                 this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
             }
         } else if (type === 'llm_response') {
@@ -2071,12 +2130,21 @@ export class WorkflowEditor {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
         this.lastLlmResponseContent = null;
+        const initialPromptFromLogs = this.getInitialPromptFromLogs(logs);
+        if (initialPromptFromLogs) {
+            this.appendChatMessage(initialPromptFromLogs, 'user');
+        }
         let messageShown = false;
         logs.forEach((entry: any) => {
+            if (this.isApprovalInputLog(entry)) {
+                const approvalText = this.formatLogContent(entry);
+                if (approvalText) {
+                    this.appendApprovalResultFromLog(approvalText);
+                }
+                return;
+            }
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
-            // Only show the user's initial input (before any agent has responded)
-            if (entry.type === 'start_prompt' && this.lastLlmResponseContent !== null) return;
             if (entry.type === 'llm_response') this.lastLlmResponseContent = entry.content ?? null;
             if ((role === 'agent' || role === 'error') && !messageShown) {
                 this.hideAgentSpinner();
@@ -2150,6 +2218,7 @@ export class WorkflowEditor {
             : false;
 
         if (result.status === 'paused' && result.waitingForInput) {
+            this.hideAgentSpinner();
             this.currentRunId = result.runId;
             const pausedNodeId = result.currentNodeId || this.extractWaitingNodeId(result.logs);
             this.showApprovalMessage(pausedNodeId);
@@ -2252,11 +2321,17 @@ export class WorkflowEditor {
 
     async submitApprovalDecision(decision: any) {
         if (!this.currentRunId) return;
+        const pendingApprovalNodeId = this.pendingApprovalRequest?.nodeId ?? null;
         this.setApprovalButtonsDisabled(true);
         const note = '';
         this.replaceApprovalWithResult(decision, note);
         this.setWorkflowState('running');
-        this.showAgentSpinner();
+        if (pendingApprovalNodeId) {
+            const nextNode = this.getApprovalNextNode(pendingApprovalNodeId, decision);
+            if (nextNode?.type === 'agent') {
+                this.showAgentSpinner(this.getAgentNameForNode(nextNode.id));
+            }
+        }
         const controller = new AbortController();
         this.activeRunController = controller;
         

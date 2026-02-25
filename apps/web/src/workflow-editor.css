@@ -838,79 +838,92 @@ path.connection-line.active {
     border: 1px solid var(--Colors-Stroke-Default);
     background: var(--Colors-Backgrounds-Main-Top);
     color: var(--Colors-Text-Body-Strong);
+    border-right: 3px solid var(--Colors-Primary-Medium);
+    max-width: min(520px, 100%);
+}
+
+.approval-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-s);
 }
 
 .approval-text {
-    font-weight: 600;
-    margin-bottom: var(--UI-Spacing-spacing-s);
+    font-weight: 500;
+}
+
+.approval-helper {
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-xxs);
 }
 
 .approval-actions {
     display: flex;
-    justify-content: flex-end;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: var(--UI-Spacing-spacing-s);
-    margin-top: var(--UI-Spacing-spacing-s);
 }
 
 .approval-actions button {
-    min-width: 60px;
-    padding: var(--UI-Spacing-spacing-xxs) var(--UI-Spacing-spacing-mxs);
+    min-width: 96px;
+    padding: 0 var(--UI-Spacing-spacing-ms);
     font-size: var(--Fonts-Body-Default-xs);
 }
 
 .chat-message.approval-result {
-    align-self: center;
-    max-width: 400px;
-    border-radius: var(--UI-Radius-radius-s);
-    padding: var(--UI-Spacing-spacing-mxs) var(--UI-Spacing-spacing-ms);
-    font-size: var(--Fonts-Body-Default-xs);
-    display: flex;
-    align-items: center;
-    gap: var(--UI-Spacing-spacing-s);
+    align-self: flex-end;
+    border: 1px solid var(--Colors-Stroke-Default);
+    background: var(--Colors-Backgrounds-Main-Top);
+    max-width: min(520px, 100%);
 }
 
 .chat-message.approval-result.approved {
-    background: var(--Colors-Alert-Success-Lighter);
-    border: 1px solid var(--Colors-Alert-Success-Medium);
-    color: var(--Colors-Alert-Success-Medium-Dark);
+    border-right: 3px solid var(--Colors-Alert-Success-Medium);
 }
 
 .chat-message.approval-result.rejected {
-    background: var(--Colors-Alert-Error-Lighter);
-    border: 1px solid var(--Colors-Alert-Error-Medium);
-    color: var(--Colors-Alert-Error-Default);
+    border-right: 3px solid var(--Colors-Alert-Error-Medium);
 }
 
 .approval-result-content {
     display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--UI-Spacing-spacing-xs);
+}
+
+.approval-result-status {
+    display: inline-flex;
     align-items: center;
-    gap: var(--UI-Spacing-spacing-s);
-    flex-wrap: wrap;
+    gap: var(--UI-Spacing-spacing-xs);
+    font-weight: 600;
+}
+
+.chat-message.approval-result.approved .approval-result-status {
+    color: var(--Colors-Alert-Success-Medium-Dark);
+}
+
+.chat-message.approval-result.rejected .approval-result-status {
+    color: var(--Colors-Alert-Error-Default);
 }
 
 .approval-result-icon {
-    font-size: var(--Fonts-Body-Default-xl);
+    font-size: var(--Fonts-Body-Default-sm);
     font-weight: 700;
     line-height: 1;
 }
 
 .approval-result-text {
     font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    font-size: var(--Fonts-Body-Default-xs);
+    text-transform: none;
+    letter-spacing: normal;
+    font-size: var(--Fonts-Body-Default-sm);
 }
 
 .approval-result-note {
-    width: 100%;
-    margin-top: var(--UI-Spacing-spacing-s);
-    padding-top: var(--UI-Spacing-spacing-s);
-    border-top: 1px solid currentColor;
-    opacity: 0.7;
+    color: var(--Colors-Text-Body-Medium);
     font-size: var(--Fonts-Body-Default-xs);
     font-weight: 400;
-    text-transform: none;
-    letter-spacing: normal;
 }
 
 .chat-input {
