@@ -52,12 +52,20 @@ export interface WorkflowEngineInitOptions {
 
 const DEFAULT_REASONING = 'low';
 const IF_CONDITION_HANDLE_PREFIX = 'condition-';
+const APPROVAL_CONTEXTS_STATE_KEY = '__approval_contexts__';
+const PENDING_APPROVAL_QUEUE_STATE_KEY = '__pending_approval_queue__';
+const DEFERRED_NODE_QUEUE_STATE_KEY = '__deferred_node_queue__';
 
 type IfConditionOperator = 'equal' | 'contains';
 
 interface IfCondition {
   operator: IfConditionOperator;
   value: string;
+}
+
+interface DeferredNodeExecution {
+  nodeId: string;
+  previousOutput: unknown;
 }
 
 class MissingLLM implements WorkflowLLM {
@@ -71,7 +79,7 @@ export class WorkflowEngine {
 
   private readonly timestampFn: () => string;
 
-  private readonly onLog?: (entry: WorkflowLogEntry) => void;
+  private onLog?: (entry: WorkflowLogEntry) => void;
 
   private graph: WorkflowGraph;
 
@@ -130,8 +138,13 @@ export class WorkflowEngine {
     };
   }
 
+  setOnLog(onLog?: (entry: WorkflowLogEntry) => void): void {
+    this.onLog = onLog;
+  }
+
   async run(): Promise<WorkflowRunResult> {
     this.status = 'running';
+    this.waitingForInput = false;
     const startNode = this.graph.nodes.find((n) => n.type === 'start');
     if (!startNode) {
       this.log('system', 'error', 'No start node found in workflow graph');
@@ -141,6 +154,13 @@ export class WorkflowEngine {
 
     this.currentNodeId = startNode.id;
     await this.processNode(startNode);
+    if (this.status === 'running') {
+      await this.drainDeferredNodes();
+    }
+    if (this.status === 'running') {
+      this.status = 'completed';
+      this.currentNodeId = null;
+    }
     return this.getResult();
   }
 
@@ -159,41 +179,46 @@ export class WorkflowEngine {
     this.waitingForInput = false;
     this.status = 'running';
 
-    let connection: WorkflowConnection | undefined;
+    let previousOutput: unknown = input ?? '';
+    let connections: WorkflowConnection[] = [];
 
     if (currentNode.type === 'approval') {
+      this.removePendingApproval(currentNode.id);
       const normalized = this.normalizeApprovalInput(input);
       const logMessage = this.describeApprovalResult(normalized);
       this.log(currentNode.id, 'input_received', logMessage);
       this.state[`${currentNode.id}_approval`] = normalized;
 
-      const restored = this.state.pre_approval_output;
+      const restored = this.consumeApprovalContext(currentNode.id) ?? this.state.pre_approval_output;
       if (restored !== undefined) {
-        if (typeof restored === 'string') {
-          this.state.previous_output = restored;
-        } else {
-          this.state.previous_output = JSON.stringify(restored);
-        }
+        previousOutput = restored;
       }
       delete this.state.pre_approval_output;
-      connection = this.graph.connections.find(
+      connections = this.graph.connections.filter(
         (c) => c.source === currentNode.id && c.sourceHandle === normalized.decision
       );
     } else {
       this.log(currentNode.id, 'input_received', JSON.stringify(input));
-      this.state.previous_output = input ?? '';
-      connection = this.graph.connections.find((c) => c.source === currentNode.id);
+      connections = this.graph.connections.filter((c) => c.source === currentNode.id);
     }
 
-    if (connection) {
-      const nextNode = this.graph.nodes.find((n) => n.id === connection.target);
-      if (nextNode) {
-        await this.processNode(nextNode);
+    this.state.previous_output = previousOutput;
+
+    await this.processConnections(currentNode.id, connections, previousOutput);
+    if (this.status === 'running') {
+      await this.drainDeferredNodes();
+    }
+    if (this.status === 'running') {
+      const nextPendingApprovalNodeId = this.dequeuePendingApproval();
+      if (nextPendingApprovalNodeId) {
+        this.currentNodeId = nextPendingApprovalNodeId;
+        this.waitingForInput = true;
+        this.status = 'paused';
+        this.log(nextPendingApprovalNodeId, 'wait_input', 'Waiting for user approval');
       } else {
         this.status = 'completed';
+        this.currentNodeId = null;
       }
-    } else {
-      this.status = 'completed';
     }
 
     return this.getResult();
@@ -227,8 +252,20 @@ export class WorkflowEngine {
     }
   }
 
-  private async processNode(node: WorkflowNode): Promise<void> {
-    this.currentNodeId = node.id;
+  private async processNode(
+    node: WorkflowNode,
+    previousOutput: unknown = this.state.previous_output,
+    writeSharedPreviousOutput = true
+  ): Promise<unknown> {
+    if (this.status !== 'running') {
+      if (this.status === 'paused' && this.waitingForInput && node.type === 'approval') {
+        this.setApprovalContext(node.id, previousOutput);
+        this.enqueuePendingApproval(node.id);
+        this.log(node.id, 'wait_input', 'Waiting for user approval');
+      }
+      return undefined;
+    }
+
     this.log(node.id, 'step_start', this.describeNode(node));
 
     try {
@@ -239,49 +276,44 @@ export class WorkflowEngine {
           output = node.data?.initialInput || '';
           break;
         case 'agent':
-          output = await this.executeAgentNode(node);
+          output = await this.executeAgentNode(node, previousOutput);
           break;
         case 'if': {
-          const nextNodeId = this.evaluateIfNode(node);
-          if (nextNodeId) {
-            const nextNode = this.graph.nodes.find((n) => n.id === nextNodeId);
-            if (nextNode) {
-              await this.processNode(nextNode);
-            } else {
-              this.status = 'completed';
-            }
-          } else {
-            this.status = 'completed';
-          }
-          return;
+          const nextConnections = this.evaluateIfNodeConnections(node, previousOutput);
+          await this.processConnections(node.id, nextConnections, previousOutput, writeSharedPreviousOutput);
+          return undefined;
         }
         case 'approval':
-          this.state.pre_approval_output = this.state.previous_output;
+          this.setApprovalContext(node.id, previousOutput);
+          if (this.waitingForInput) {
+            this.enqueuePendingApproval(node.id);
+            this.log(node.id, 'wait_input', 'Waiting for user approval');
+            return undefined;
+          }
+          this.state.pre_approval_output = previousOutput;
+          this.currentNodeId = node.id;
           this.status = 'paused';
           this.waitingForInput = true;
           this.log(node.id, 'wait_input', 'Waiting for user approval');
-          return;
+          return undefined;
         case 'end':
-          this.status = 'completed';
-          return;
+          return undefined;
         default:
           this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
       }
 
-      this.state.previous_output = output;
+      if (this.shouldSkipPostNodePropagation()) {
+        return undefined;
+      }
+
+      if (writeSharedPreviousOutput) {
+        this.state.previous_output = output;
+      }
       this.state[node.id] = output;
 
-      const nextConnection = this.graph.connections.find((c) => c.source === node.id);
-      if (nextConnection) {
-        const nextNode = this.graph.nodes.find((n) => n.id === nextConnection.target);
-        if (nextNode) {
-          await this.processNode(nextNode);
-        } else {
-          this.status = 'completed';
-        }
-      } else if (node.type !== 'end') {
-        this.status = 'completed';
-      }
+      const nextConnections = this.graph.connections.filter((c) => c.source === node.id);
+      await this.processConnections(node.id, nextConnections, output, writeSharedPreviousOutput);
+      return output;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const lastLog = this.logs[this.logs.length - 1];
@@ -294,6 +326,78 @@ export class WorkflowEngine {
         this.log(node.id, 'error', message);
       }
       this.status = 'failed';
+      return undefined;
+    }
+  }
+
+  private async processConnections(
+    sourceNodeId: string,
+    connections: WorkflowConnection[],
+    previousOutput: unknown,
+    writeSharedPreviousOutput = true
+  ): Promise<void> {
+    if (connections.length === 0) {
+      return;
+    }
+
+    if (this.status !== 'running') {
+      if (this.status === 'paused' && this.waitingForInput) {
+        this.deferConnections(sourceNodeId, connections, previousOutput);
+      }
+      return;
+    }
+
+    const nextNodes: WorkflowNode[] = [];
+    for (const connection of connections) {
+      const nextNode = this.graph.nodes.find((n) => n.id === connection.target);
+      if (!nextNode) {
+        this.log(sourceNodeId, 'warn', `Connection target "${connection.target}" not found`);
+        continue;
+      }
+      nextNodes.push(nextNode);
+    }
+
+    if (nextNodes.length === 0) {
+      return;
+    }
+
+    if (nextNodes.length === 1) {
+      await this.processNode(nextNodes[0], previousOutput, writeSharedPreviousOutput);
+      return;
+    }
+
+    await Promise.all(nextNodes.map((nextNode) => this.processNode(nextNode, previousOutput, false)));
+  }
+
+  private deferConnections(
+    sourceNodeId: string,
+    connections: WorkflowConnection[],
+    previousOutput: unknown
+  ): void {
+    for (const connection of connections) {
+      const nextNode = this.graph.nodes.find((n) => n.id === connection.target);
+      if (!nextNode) {
+        this.log(sourceNodeId, 'warn', `Connection target "${connection.target}" not found`);
+        continue;
+      }
+      this.enqueueDeferredNode(nextNode.id, previousOutput);
+    }
+  }
+
+  private async drainDeferredNodes(): Promise<void> {
+    while (this.status === 'running') {
+      const deferred = this.dequeueDeferredNode();
+      if (!deferred) {
+        return;
+      }
+
+      const node = this.graph.nodes.find((candidate) => candidate.id === deferred.nodeId);
+      if (!node) {
+        this.log('system', 'warn', `Deferred node "${deferred.nodeId}" not found`);
+        continue;
+      }
+
+      await this.processNode(node, deferred.previousOutput);
     }
   }
 
@@ -316,8 +420,8 @@ export class WorkflowEngine {
     }
   }
 
-  private evaluateIfNode(node: WorkflowNode): string | null {
-    const input = this.getIfInputString();
+  private evaluateIfNodeConnections(node: WorkflowNode, previousOutput: unknown): WorkflowConnection[] {
+    const input = this.getIfInputString(previousOutput);
     const normalizedInput = input.toLowerCase();
     const conditions = this.getIfConditions(node);
 
@@ -331,19 +435,18 @@ export class WorkflowEngine {
       );
 
       if (!match) continue;
-      const conn = this.graph.connections.find((c) => {
-        if (c.source !== node.id) return false;
-        if (c.sourceHandle === `${IF_CONDITION_HANDLE_PREFIX}${index}`) return true;
-        return index === 0 && c.sourceHandle === 'true';
-      });
-      if (conn) return conn.target;
+      const selectedHandles = new Set<string>([`${IF_CONDITION_HANDLE_PREFIX}${index}`]);
+      if (index === 0) {
+        selectedHandles.add('true');
+      }
+      return this.graph.connections.filter(
+        (c) => c.source === node.id && typeof c.sourceHandle === 'string' && selectedHandles.has(c.sourceHandle)
+      );
     }
 
-    const falseConn = this.graph.connections.find(
+    return this.graph.connections.filter(
       (c) => c.source === node.id && c.sourceHandle === 'false'
     );
-    if (falseConn) return falseConn.target;
-    return null;
   }
 
   private getIfConditions(node: WorkflowNode): IfCondition[] {
@@ -360,8 +463,7 @@ export class WorkflowEngine {
     }));
   }
 
-  private getIfInputString(): string {
-    const previousOutput = this.state.previous_output;
+  private getIfInputString(previousOutput: unknown): string {
     if (typeof previousOutput === 'string') return previousOutput;
     if (previousOutput === undefined || previousOutput === null) return '';
     return JSON.stringify(previousOutput);
@@ -376,9 +478,7 @@ export class WorkflowEngine {
     return input === expectedValue;
   }
 
-  private async executeAgentNode(node: WorkflowNode): Promise<string> {
-    const previousOutput = this.state.previous_output;
-
+  private async executeAgentNode(node: WorkflowNode, previousOutput: unknown): Promise<string> {
     // Resolve previousOutput to a string for template substitution
     let lastOutputStr = '';
     if (typeof previousOutput === 'string') {
@@ -442,6 +542,108 @@ export class WorkflowEngine {
     return null;
   }
 
+  private getApprovalContexts(): Record<string, unknown> {
+    const raw = this.state[APPROVAL_CONTEXTS_STATE_KEY];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    const contexts: Record<string, unknown> = {};
+    this.state[APPROVAL_CONTEXTS_STATE_KEY] = contexts;
+    return contexts;
+  }
+
+  private setApprovalContext(nodeId: string, previousOutput: unknown): void {
+    const contexts = this.getApprovalContexts();
+    contexts[nodeId] = previousOutput;
+  }
+
+  private consumeApprovalContext(nodeId: string): unknown {
+    const contexts = this.getApprovalContexts();
+    const restored = contexts[nodeId];
+    delete contexts[nodeId];
+    if (Object.keys(contexts).length === 0) {
+      delete this.state[APPROVAL_CONTEXTS_STATE_KEY];
+    }
+    return restored;
+  }
+
+  private getPendingApprovalQueue(): string[] {
+    const raw = this.state[PENDING_APPROVAL_QUEUE_STATE_KEY];
+    if (Array.isArray(raw)) {
+      const queue = raw.filter((value): value is string => typeof value === 'string');
+      if (queue.length !== raw.length) {
+        this.state[PENDING_APPROVAL_QUEUE_STATE_KEY] = queue;
+      }
+      return queue;
+    }
+    const queue: string[] = [];
+    this.state[PENDING_APPROVAL_QUEUE_STATE_KEY] = queue;
+    return queue;
+  }
+
+  private enqueuePendingApproval(nodeId: string): void {
+    if (this.currentNodeId === nodeId) return;
+    const queue = this.getPendingApprovalQueue();
+    if (!queue.includes(nodeId)) {
+      queue.push(nodeId);
+    }
+  }
+
+  private dequeuePendingApproval(): string | null {
+    const queue = this.getPendingApprovalQueue();
+    const nextNodeId = queue.shift() ?? null;
+    if (queue.length === 0) {
+      delete this.state[PENDING_APPROVAL_QUEUE_STATE_KEY];
+    }
+    return nextNodeId;
+  }
+
+  private removePendingApproval(nodeId: string): void {
+    const raw = this.state[PENDING_APPROVAL_QUEUE_STATE_KEY];
+    if (!Array.isArray(raw)) return;
+    const queue = raw.filter((value): value is string => typeof value === 'string');
+    const nextQueue = queue.filter((value) => value !== nodeId);
+    if (nextQueue.length === queue.length) return;
+    if (nextQueue.length === 0) {
+      delete this.state[PENDING_APPROVAL_QUEUE_STATE_KEY];
+      return;
+    }
+    this.state[PENDING_APPROVAL_QUEUE_STATE_KEY] = nextQueue;
+  }
+
+  private getDeferredNodeQueue(): DeferredNodeExecution[] {
+    const raw = this.state[DEFERRED_NODE_QUEUE_STATE_KEY];
+    if (Array.isArray(raw)) {
+      const queue = raw.flatMap((entry) => {
+        if (!entry || typeof entry !== 'object') return [];
+        const nodeId = (entry as { nodeId?: unknown }).nodeId;
+        if (typeof nodeId !== 'string') return [];
+        return [{ nodeId, previousOutput: (entry as { previousOutput?: unknown }).previousOutput }];
+      });
+      if (queue.length !== raw.length) {
+        this.state[DEFERRED_NODE_QUEUE_STATE_KEY] = queue;
+      }
+      return queue;
+    }
+    const queue: DeferredNodeExecution[] = [];
+    this.state[DEFERRED_NODE_QUEUE_STATE_KEY] = queue;
+    return queue;
+  }
+
+  private enqueueDeferredNode(nodeId: string, previousOutput: unknown): void {
+    const queue = this.getDeferredNodeQueue();
+    queue.push({ nodeId, previousOutput });
+  }
+
+  private dequeueDeferredNode(): DeferredNodeExecution | null {
+    const queue = this.getDeferredNodeQueue();
+    const next = queue.shift() ?? null;
+    if (queue.length === 0) {
+      delete this.state[DEFERRED_NODE_QUEUE_STATE_KEY];
+    }
+    return next;
+  }
+
   private normalizeApprovalInput(input?: ApprovalInput | string | Record<string, unknown>): ApprovalInput {
     if (typeof input === 'string') {
       return {
@@ -469,6 +671,21 @@ export class WorkflowEngine {
       return `${base} Feedback: ${result.note.trim()}`;
     }
     return base;
+  }
+
+  private shouldSkipPostNodePropagation(): boolean {
+    if (this.status === 'running') {
+      return false;
+    }
+    if (this.status === 'failed' || this.status === 'completed') {
+      return true;
+    }
+    if (this.status === 'paused' && !this.waitingForInput) {
+      return true;
+    }
+    // Keep propagation active for paused + waitingForInput so processConnections
+    // can defer downstream branches that have not executed yet.
+    return false;
   }
 }
 

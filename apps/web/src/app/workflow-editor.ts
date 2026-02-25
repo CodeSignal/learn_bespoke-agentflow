@@ -1,7 +1,7 @@
 // Bespoke Agent Builder - Client Logic
 
 import type { WorkflowConnection, WorkflowGraph, WorkflowNode, WorkflowRunResult } from '@agentic/types';
-import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
+import { runWorkflowStream, resumeWorkflowStream, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
@@ -23,6 +23,7 @@ const IF_PORT_STEP = 30;
 const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
 const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
 const PREVIOUS_OUTPUT_TEMPLATE = '{{PREVIOUS_OUTPUT}}';
+const GENERIC_AGENT_SPINNER_KEY = '__generic_agent_spinner__';
 const IF_CONDITION_OPERATORS = [
     { value: 'equal', label: 'Equal' },
     { value: 'contains', label: 'Contains' }
@@ -197,7 +198,9 @@ export class WorkflowEditor {
 
     private rightPanel: HTMLElement | null;
 
-    private pendingAgentMessage: HTMLElement | null;
+    private pendingAgentMessages: Map<string, HTMLElement>;
+
+    private pendingAgentMessageCounts: Map<string, number>;
 
     private currentPrompt: string;
 
@@ -305,7 +308,8 @@ export class WorkflowEditor {
         this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle';
         this.rightPanel = document.getElementById('right-panel');
-        this.pendingAgentMessage = null;
+        this.pendingAgentMessages = new Map<string, HTMLElement>();
+        this.pendingAgentMessageCounts = new Map<string, number>();
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
         this.activeRunController = null;
@@ -818,9 +822,12 @@ export class WorkflowEditor {
         this.runHistory.push({ role: 'user', content: text });
     }
 
-    showAgentSpinner(name?: string) {
+    showAgentSpinner(name?: string, nodeId?: string) {
         if (!this.chatMessages) return;
-        this.hideAgentSpinner();
+        const spinnerKey = nodeId || GENERIC_AGENT_SPINNER_KEY;
+        const currentCount = this.pendingAgentMessageCounts.get(spinnerKey) ?? 0;
+        this.pendingAgentMessageCounts.set(spinnerKey, currentCount + 1);
+        if (currentCount > 0 && this.pendingAgentMessages.has(spinnerKey)) return;
         const resolvedName = name || this.getPrimaryAgentName();
         const spinner = document.createElement('div');
         spinner.className = 'chat-message agent spinner';
@@ -841,14 +848,27 @@ export class WorkflowEditor {
         spinner.appendChild(body);
         this.chatMessages.appendChild(spinner);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-        this.pendingAgentMessage = spinner;
+        this.pendingAgentMessages.set(spinnerKey, spinner);
     }
 
-    hideAgentSpinner() {
-        if (this.pendingAgentMessage) {
-            this.pendingAgentMessage.remove();
-            this.pendingAgentMessage = null;
+    hideAgentSpinner(nodeId?: string) {
+        if (nodeId) {
+            const currentCount = this.pendingAgentMessageCounts.get(nodeId) ?? 0;
+            if (currentCount > 1) {
+                this.pendingAgentMessageCounts.set(nodeId, currentCount - 1);
+                return;
+            }
+            this.pendingAgentMessageCounts.delete(nodeId);
+            const spinner = this.pendingAgentMessages.get(nodeId);
+            if (!spinner) return;
+            spinner.remove();
+            this.pendingAgentMessages.delete(nodeId);
+            return;
         }
+
+        this.pendingAgentMessages.forEach((spinner) => spinner.remove());
+        this.pendingAgentMessages.clear();
+        this.pendingAgentMessageCounts.clear();
     }
 
     zoomCanvas(stepPercent: any) {
@@ -1812,7 +1832,8 @@ export class WorkflowEditor {
                         this.getIfConditionHandle(0),
                         'port-out port-condition port-condition-aggregate',
                         title,
-                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP
+                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP,
+                        false
                     );
                     aggregateConditionPort.textContent = String(conditions.length);
                     aggregateConditionPort.setAttribute('aria-label', `${conditions.length} conditions`);
@@ -1860,19 +1881,29 @@ export class WorkflowEditor {
         }
     }
 
-    createPort(nodeId: string, handle: string, className: string, title = '', top: number | null = null): HTMLDivElement {
+    createPort(
+        nodeId: string,
+        handle: string,
+        className: string,
+        title = '',
+        top: number | null = null,
+        connectable = true
+    ): HTMLDivElement {
         const port = document.createElement('div');
-        port.className = `port ${className}`;
+        port.className = `port ${className}${connectable ? '' : ' port-disabled'}`;
         if (title) port.title = title;
         if (typeof top === 'number') {
             port.style.top = `${top}px`;
         }
         port.dataset.nodeId = nodeId;
         port.dataset.handle = handle;
+        if (!connectable) {
+            port.setAttribute('aria-disabled', 'true');
+        }
         
         if (handle === 'input') {
             port.addEventListener('mouseup', (e: any) => this.onPortMouseUp(e, nodeId, handle));
-        } else {
+        } else if (connectable) {
             port.addEventListener('mousedown', (e: any) => this.onPortMouseDown(e, nodeId, handle));
         }
         return port;
@@ -1884,6 +1915,10 @@ export class WorkflowEditor {
         e.stopPropagation();
         e.preventDefault();
         if (!this.connectionsLayer) return;
+        const sourceNode = this.nodes.find((candidate: any) => candidate.id === nodeId);
+        if (sourceNode && this.shouldAggregateCollapsedIfPorts(sourceNode) && this.getIfConditionIndexFromHandle(handle) !== null) {
+            return;
+        }
         const world = this.screenToWorld(e.clientX, e.clientY);
         this.connectionStart = { nodeId, handle, x: world.x, y: world.y };
         
@@ -1903,24 +1938,31 @@ export class WorkflowEditor {
     onPortMouseUp(e: any, nodeId: any, handle: any) {
         e.stopPropagation();
         if (this.connectionStart && this.connectionStart.nodeId !== nodeId) {
+            const nextConnection: WorkflowConnection = {
+                source: this.connectionStart.nodeId,
+                target: nodeId,
+                sourceHandle: this.connectionStart.handle,
+                targetHandle: handle
+            };
+            const duplicateExists = this.connections.some(
+                (conn: any) =>
+                    conn.source === nextConnection.source &&
+                    conn.target === nextConnection.target &&
+                    conn.sourceHandle === nextConnection.sourceHandle &&
+                    conn.targetHandle === nextConnection.targetHandle
+            );
             // If we're reconnecting an existing connection, create new connection with updated target
             if (this.reconnectingConnection !== null) {
                 // Connection was already removed from array, just create new one
-                this.connections.push({
-                    source: this.connectionStart.nodeId,
-                    target: nodeId,
-                    sourceHandle: this.connectionStart.handle,
-                    targetHandle: handle
-                });
+                if (!duplicateExists) {
+                    this.connections.push(nextConnection);
+                }
                 this.reconnectingConnection = null;
             } else {
                 // Creating a new connection
-                this.connections.push({
-                    source: this.connectionStart.nodeId,
-                    target: nodeId,
-                    sourceHandle: this.connectionStart.handle,
-                    targetHandle: handle
-                });
+                if (!duplicateExists) {
+                    this.connections.push(nextConnection);
+                }
             }
             this.renderConnections();
             if(this.tempConnection) this.tempConnection.remove();
@@ -2135,14 +2177,6 @@ export class WorkflowEditor {
         this.pendingApprovalRequest.rejectBtn.disabled = disabled;
     }
 
-    getApprovalNextNode(nodeId: string, decision: 'approve' | 'reject'): EditorNode | undefined {
-        const connection = this.getRunConnections().find(
-            (conn: any) => conn.source === nodeId && conn.sourceHandle === decision
-        );
-        if (!connection) return undefined;
-        return this.getRunNodes().find((node: any) => node.id === connection.target);
-    }
-
     extractWaitingNodeId(logs: any = []) {
         if (!Array.isArray(logs)) return null;
         for (let i = logs.length - 1; i >= 0; i -= 1) {
@@ -2191,6 +2225,8 @@ export class WorkflowEditor {
     startChatSession(_promptText: any) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
+        this.pendingAgentMessages.clear();
+        this.pendingAgentMessageCounts.clear();
         if (typeof _promptText === 'string' && _promptText.trim()) {
             this.appendChatMessage(_promptText, 'user');
         }
@@ -2250,14 +2286,20 @@ export class WorkflowEditor {
         if (type === 'step_start') {
             const node = this.getRunNodeById(entry.nodeId);
             if (node?.type === 'agent') {
-                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
+                this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
+                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId), entry.nodeId);
             }
         } else if (type === 'llm_response') {
-            this.hideAgentSpinner();
+            this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
+            this.hideAgentSpinner(entry.nodeId);
             this.lastLlmResponseContent = entry.content ?? null;
             this.appendChatMessage(entry.content || '', 'agent', this.getAgentNameForNode(entry.nodeId));
         } else if (type === 'llm_error' || type === 'error') {
-            this.hideAgentSpinner();
+            this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
+            const node = this.getRunNodeById(entry.nodeId);
+            if (node?.type === 'agent') {
+                this.hideAgentSpinner(entry.nodeId);
+            }
             this.appendChatMessage(entry.content || '', 'error');
         }
     }
@@ -2265,13 +2307,34 @@ export class WorkflowEditor {
     renderChatFromLogs(logs: any = []) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
+        this.pendingAgentMessages.clear();
+        this.pendingAgentMessageCounts.clear();
         this.lastLlmResponseContent = null;
         const initialPromptFromLogs = this.getInitialPromptFromLogs(logs);
         if (initialPromptFromLogs) {
             this.appendChatMessage(initialPromptFromLogs, 'user');
         }
-        let messageShown = false;
+        const activeAgentNodeCounts = new Map<string, number>();
         logs.forEach((entry: any) => {
+            const entryNodeId = typeof entry?.nodeId === 'string' ? entry.nodeId : null;
+            const entryNode = entryNodeId ? this.getRunNodeById(entryNodeId) : undefined;
+            if (entry.type === 'step_start' && entryNode?.type === 'agent' && entryNodeId) {
+                const nextCount = (activeAgentNodeCounts.get(entryNodeId) ?? 0) + 1;
+                activeAgentNodeCounts.set(entryNodeId, nextCount);
+            }
+            if (
+                (entry.type === 'llm_response' || entry.type === 'llm_error' || entry.type === 'error') &&
+                entryNode?.type === 'agent' &&
+                entryNodeId
+            ) {
+                const nextCount = (activeAgentNodeCounts.get(entryNodeId) ?? 0) - 1;
+                if (nextCount > 0) {
+                    activeAgentNodeCounts.set(entryNodeId, nextCount);
+                } else {
+                    activeAgentNodeCounts.delete(entryNodeId);
+                }
+            }
+
             if (this.isApprovalInputLog(entry)) {
                 const approvalText = this.formatLogContent(entry);
                 if (approvalText) {
@@ -2282,18 +2345,17 @@ export class WorkflowEditor {
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
             if (entry.type === 'llm_response') this.lastLlmResponseContent = entry.content ?? null;
-            if ((role === 'agent' || role === 'error') && !messageShown) {
-                this.hideAgentSpinner();
-                messageShown = true;
-            }
             const text = this.formatLogContent(entry);
             if (!text) return;
             const agentName = role === 'agent' ? this.getAgentNameForNode(entry.nodeId) : undefined;
             this.appendChatMessage(text, role, agentName);
         });
-        if (!messageShown) {
-            this.showAgentSpinner();
-        }
+
+        activeAgentNodeCounts.forEach((activeCount, nodeId) => {
+            for (let i = 0; i < activeCount; i += 1) {
+                this.showAgentSpinner(this.getAgentNameForNode(nodeId), nodeId);
+            }
+        });
     }
 
     async runWorkflow() {
@@ -2414,7 +2476,9 @@ export class WorkflowEditor {
             // Engine still executing on server — show partial chat and poll for updates
             this.currentRunId = runId;
             this.renderChatFromLogs(result.logs);
-            this.showAgentSpinner();
+            if (this.pendingAgentMessages.size === 0) {
+                this.showAgentSpinner();
+            }
             this.setWorkflowState('running');
             this.pollForRun(runId, result.logs.length);
         } else if (result.status === 'paused' && !result.waitingForInput) {
@@ -2472,23 +2536,22 @@ export class WorkflowEditor {
 
     async submitApprovalDecision(decision: any) {
         if (!this.currentRunId) return;
-        const pendingApprovalNodeId = this.pendingApprovalRequest?.nodeId ?? null;
         this.setApprovalButtonsDisabled(true);
         const note = '';
         this.replaceApprovalWithResult(decision, note);
         this.setWorkflowState('running');
-        if (pendingApprovalNodeId) {
-            const nextNode = this.getApprovalNextNode(pendingApprovalNodeId, decision);
-            if (nextNode?.type === 'agent') {
-                this.showAgentSpinner(this.getAgentNameForNode(nextNode.id));
-            }
-        }
+        this.showAgentSpinner();
         const controller = new AbortController();
         this.activeRunController = controller;
         
         try {
-            const result = await resumeWorkflow(this.currentRunId, { decision, note }, { signal: controller.signal });
-            this.handleRunResult(result);
+            const result = await resumeWorkflowStream(
+                this.currentRunId,
+                { decision, note },
+                (entry: any) => this.onLogEntry(entry),
+                { signal: controller.signal }
+            );
+            this.handleRunResult(result, true);
         } catch (e) {
             if (this.isAbortError(e)) return;
             this.appendChatMessage(this.getErrorMessage(e), 'error');

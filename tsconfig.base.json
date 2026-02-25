@@ -16,13 +16,12 @@
     "baseUrl": ".",
     "paths": {
       "@agentic/types": [
-        "./packages/types/src"
+        "./packages/types/src/index.ts"
       ],
       "@agentic/workflow-engine": [
-        "./packages/workflow-engine/src"
+        "./packages/workflow-engine/src/index.ts"
       ]
     },
     "declarationMap": true
   }
 }
-
