@@ -497,6 +497,37 @@ path.connection-line.active {
     line-height: 1.4;
 }
 
+/* Bespoke: {{VARIABLE_NAME}} syntax highlight in prompt fields (no DS component for this). Uses DS tokens only. */
+.template-highlight-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.template-highlight-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow: auto;
+    pointer-events: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    box-sizing: border-box;
+    /* color set in JS from textarea's original so only .template-var is visually changed */
+}
+
+.template-highlight-wrapper textarea {
+    position: relative;
+    color: transparent;
+    caret-color: var(--Colors-Text-Body-Strong);
+}
+
+.template-highlight-overlay .template-var {
+    color: var(--Colors-Primary-Medium);
+    font-weight: 500;
+}
+
 .ds-select {
     width: 100%;
     height: var(--UI-Input-sm);
@@ -600,10 +631,23 @@ path.connection-line.active {
     color: var(--Colors-Text-Body-White);
 }
 
+.chat-message.user .template-var {
+    color: var(--Colors-Base-Accent-Yellow-300);
+    font-weight: 600;
+}
+
 .chat-message.agent {
     align-self: flex-start;
     background: var(--Colors-Backgrounds-Main-Top);
     border: 1px solid var(--Colors-Stroke-Default);
+}
+
+/* Template var in agent bubble: DS token; override markdown/code so full {{...}} is colored */
+.chat-message.agent .template-var,
+.chat-message.agent .markdown .template-var,
+.chat-message.agent .markdown code .template-var {
+    color: var(--Colors-Primary-Medium) !important;
+    font-weight: 500;
 }
 
 .chat-message.agent.spinner {

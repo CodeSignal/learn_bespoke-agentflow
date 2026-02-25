@@ -269,6 +269,7 @@ export class WorkflowEngine {
       }
 
       this.state.previous_output = output;
+      (this.state as Record<string, unknown>)._previousNodeId = node.id;
       this.state[node.id] = output;
 
       const nextConnection = this.graph.connections.find((c) => c.source === node.id);
@@ -399,7 +400,14 @@ export class WorkflowEngine {
 
     const userPrompt = node.data?.userPrompt;
     let userContent: string;
-    if (userPrompt && typeof userPrompt === 'string' && userPrompt.trim()) {
+    const previousNodeId = (this.state as Record<string, unknown>)._previousNodeId as string | undefined;
+    const startNode = this.graph.nodes.find((n) => n.type === 'start');
+    const isFirstAgent = startNode && previousNodeId === startNode.id;
+
+    if (isFirstAgent) {
+      // First agent after Start: use only the initial prompt, no additions from Agent Input template
+      userContent = lastOutputStr;
+    } else if (userPrompt && typeof userPrompt === 'string' && userPrompt.trim()) {
       userContent = userPrompt.replace(/\{\{PREVIOUS_OUTPUT\}\}/g, lastOutputStr);
     } else {
       // Backwards compatibility: empty userPrompt falls back to last output directly

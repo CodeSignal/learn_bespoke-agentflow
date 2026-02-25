@@ -3,6 +3,12 @@
 import type { WorkflowConnection, WorkflowNode, WorkflowRunResult } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
+import {
+    attachTemplateHighlightOverlay,
+    highlightTemplateVars,
+    protectTemplateVarsForMarkdown,
+    restoreTemplateVarsInHtml
+} from './template-syntax';
 
 const EXPANDED_NODE_WIDTH = 420;
 
@@ -288,7 +294,7 @@ export class WorkflowEditor {
         this.initDragAndDrop();
         this.initCanvasInteractions();
         this.initButtons();
-        
+
         // WebSocket for Logs
         this.initWebSocket();
 
@@ -1375,6 +1381,7 @@ export class WorkflowEditor {
                 this.updatePreview(node);
             });
             container.appendChild(sysInput);
+            attachTemplateHighlightOverlay(sysInput);
 
             // Input
             container.appendChild(buildLabel('Input'));
@@ -1387,6 +1394,7 @@ export class WorkflowEditor {
                 this.scheduleSave();
             });
             container.appendChild(userInput);
+            attachTemplateHighlightOverlay(userInput);
 
             // Model
             container.appendChild(buildLabel('Model'));
@@ -1899,7 +1907,12 @@ export class WorkflowEditor {
         const body = document.createElement('div');
         if (role === 'agent') {
             body.className = 'chat-message-body markdown';
-            body.innerHTML = renderMarkdown(normalizedText);
+            const { protected: protectedText, placeholders } = protectTemplateVarsForMarkdown(normalizedText);
+            const html = renderMarkdown(protectedText);
+            body.innerHTML = restoreTemplateVarsInHtml(html, placeholders);
+        } else if (role === 'user') {
+            body.className = 'chat-message-body';
+            body.innerHTML = highlightTemplateVars(normalizedText);
         } else {
             body.textContent = normalizedText;
         }
