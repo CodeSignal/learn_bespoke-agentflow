@@ -117,6 +117,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         onLog: (entry) => sendEvent({ type: 'log', entry })
       });
       addWorkflow(engine);
+      sendEvent({ type: 'start', runId });
 
       const result = await engine.run();
       await persistResult(engine, result);
@@ -182,6 +183,40 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to read default workflow', message);
       res.status(500).json({ error: 'Failed to read default workflow', details: message });
+    }
+  });
+
+  router.get('/run/:runId', (req: Request, res: Response) => {
+    const { runId } = req.params;
+
+    // Check in-memory first — catches engines that are still running or paused
+    const engine = getWorkflow(runId);
+    if (engine) {
+      res.json(engine.getResult());
+      return;
+    }
+
+    // Fall back to the persisted run record on disk
+    const filePath = path.join(config.runsDir, `run_${runId}.json`);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: 'Run not found' });
+      return;
+    }
+    try {
+      const record = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as WorkflowRunRecord;
+      // Return as WorkflowRunResult shape — completed/failed runs are no longer waiting
+      const result: WorkflowRunResult = {
+        runId: record.runId,
+        status: record.status,
+        logs: record.logs,
+        state: {},
+        waitingForInput: false,
+        currentNodeId: null,
+      };
+      res.json(result);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ error: 'Failed to read run record', details: message });
     }
   });
 

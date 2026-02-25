@@ -1,7 +1,7 @@
 // @ts-nocheck
 // Bespoke Agent Builder - Client Logic
 
-import { runWorkflowStream, resumeWorkflow, fetchConfig } from '../services/api';
+import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
 const EXPANDED_NODE_WIDTH = 420;
@@ -69,6 +69,7 @@ export class WorkflowEditor {
         this.modalCtorPromise = null;
         this.stateReady = false;
         this.saveTimer = null;
+        this.pollTimer = null;
         this.initSplitPanelLayout();
 
         // Bindings
@@ -87,6 +88,7 @@ export class WorkflowEditor {
             await this.loadInitialWorkflow();
             this.stateReady = true;
             this.saveWorkflowState();
+            await this.recoverRun();
         });
 
         window.addEventListener('beforeunload', () => {
@@ -319,6 +321,7 @@ export class WorkflowEditor {
     }
 
     cancelRunningWorkflow() {
+        this.clearRunId();
         if (this.activeRunController) {
             this.activeRunController.abort();
             this.activeRunController = null;
@@ -632,6 +635,7 @@ export class WorkflowEditor {
             this.addDefaultStartNode();
             this.currentPrompt = '';
             this.currentRunId = null;
+            this.clearRunId();
             if (this.chatMessages) {
                 this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
             }
@@ -791,6 +795,7 @@ export class WorkflowEditor {
     }
 
     static get STORAGE_KEY() { return 'agentic-workflow'; }
+    static get RUN_KEY() { return 'agentic-run-id'; }
 
     saveWorkflowState() {
         try {
@@ -810,6 +815,18 @@ export class WorkflowEditor {
             this.saveTimer = null;
             this.saveWorkflowState();
         }, 500);
+    }
+
+    saveRunId(runId) {
+        try { localStorage.setItem(WorkflowEditor.RUN_KEY, runId); } catch { /* ignore */ }
+    }
+
+    clearRunId() {
+        try { localStorage.removeItem(WorkflowEditor.RUN_KEY); } catch { /* ignore */ }
+        if (this.pollTimer !== null) {
+            clearTimeout(this.pollTimer);
+            this.pollTimer = null;
+        }
     }
 
     async loadInitialWorkflow() {
@@ -1767,7 +1784,7 @@ export class WorkflowEditor {
             const result = await runWorkflowStream(
                 graph,
                 (entry) => this.onLogEntry(entry),
-                { signal: controller.signal }
+                { signal: controller.signal, onStart: (id) => this.saveRunId(id) }
             );
             this.handleRunResult(result, true);
 
@@ -1798,6 +1815,7 @@ export class WorkflowEditor {
             this.showApprovalMessage(pausedNodeId);
             this.setWorkflowState('paused');
         } else if (result.status === 'completed') {
+            this.clearRunId();
             this.clearApprovalMessage();
             if (hasLlmError) {
                 this.appendStatusMessage('Failed', 'failed');
@@ -1808,6 +1826,7 @@ export class WorkflowEditor {
             this.setWorkflowState('idle');
             this.currentRunId = null;
         } else if (result.status === 'failed') {
+            this.clearRunId();
             this.clearApprovalMessage();
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
@@ -1820,6 +1839,50 @@ export class WorkflowEditor {
                 this.setWorkflowState('idle');
             }
         }
+    }
+
+    async recoverRun() {
+        const runId = localStorage.getItem(WorkflowEditor.RUN_KEY);
+        if (!runId) return;
+
+        const result = await fetchRun(runId);
+        if (!result) { this.clearRunId(); return; }
+
+        if (result.status === 'running') {
+            // Engine still executing on server — show partial chat and poll for updates
+            this.currentRunId = runId;
+            this.renderChatFromLogs(result.logs);
+            this.showAgentSpinner();
+            this.setWorkflowState('running');
+            this.pollForRun(runId, result.logs.length);
+        } else {
+            // completed, failed, or paused — handleRunResult covers all three cases
+            // (fromStream=false → it calls renderChatFromLogs internally)
+            this.handleRunResult(result);
+            if (result.status !== 'paused') this.clearRunId();
+        }
+    }
+
+    pollForRun(runId, knownLogCount) {
+        this.pollTimer = setTimeout(async () => {
+            this.pollTimer = null;
+            const result = await fetchRun(runId);
+            if (!result) {
+                this.clearRunId();
+                this.setWorkflowState('idle');
+                return;
+            }
+            // Re-render chat if new log entries arrived since last poll
+            if (result.logs.length > knownLogCount) {
+                this.renderChatFromLogs(result.logs);
+            }
+            if (result.status === 'running') {
+                this.pollForRun(runId, result.logs.length); // keep polling
+            } else {
+                this.handleRunResult(result);
+                if (result.status !== 'paused') this.clearRunId();
+            }
+        }, 2000);
     }
 
     async submitApprovalDecision(decision) {
