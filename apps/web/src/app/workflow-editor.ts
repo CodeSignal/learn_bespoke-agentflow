@@ -134,6 +134,11 @@ type WorkflowGraphInput = {
     connections?: WorkflowConnection[];
 };
 
+type WorkflowGraphPayload = {
+    nodes: EditorNode[];
+    connections: WorkflowConnection[];
+};
+
 export class WorkflowEditor {
     private modelOptions: string[];
 
@@ -215,13 +220,20 @@ export class WorkflowEditor {
 
     private runHistory: RunHistoryEntry[];
 
-    private approveBtn: HTMLButtonElement | null;
-
-    private rejectBtn: HTMLButtonElement | null;
-
     private getErrorMessage(error: unknown): string {
         if (error instanceof Error) return error.message;
         return String(error);
+    }
+
+    private isValidGraphInput(value: unknown): value is WorkflowGraphPayload {
+        if (!value || typeof value !== 'object') return false;
+        const graph = value as { nodes?: unknown; connections?: unknown };
+        if (!Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return false;
+        return graph.nodes.every((node) => {
+            if (!node || typeof node !== 'object') return false;
+            const candidate = node as { id?: unknown; type?: unknown };
+            return typeof candidate.id === 'string' && typeof candidate.type === 'string';
+        });
     }
 
     constructor() {
@@ -253,7 +265,7 @@ export class WorkflowEditor {
         this.runButton = document.getElementById('btn-run') as HTMLButtonElement | null;
         this.cancelRunButton = document.getElementById('btn-cancel-run') as HTMLButtonElement | null;
         this.zoomValue = document.getElementById('zoom-value');
-        this.workflowState = 'idle'; // 'idle' | 'running' | 'paused'
+        this.workflowState = 'idle';
         this.rightPanel = document.getElementById('right-panel');
         this.pendingAgentMessage = null;
         this.currentPrompt = '';
@@ -262,8 +274,6 @@ export class WorkflowEditor {
         this.lastLlmResponseContent = null;
         this.currentRunId = null;
         this.runHistory = [];
-        this.approveBtn = null;
-        this.rejectBtn = null;
 
         this.splitPanelCtorPromise = null;
         this.dropdownCtorPromise = null;
@@ -291,8 +301,8 @@ export class WorkflowEditor {
             this.stateReady = true;
             this.saveWorkflowState();
             await this.recoverRun();
-        }).catch((err: any) => {
-            console.error('Workflow editor initialization failed', err);
+        }).catch((err: unknown) => {
+            console.error('Workflow editor initialization failed', this.getErrorMessage(err));
         });
 
         window.addEventListener('beforeunload', () => {
@@ -700,26 +710,6 @@ export class WorkflowEditor {
         }
     }
 
-    renderEffortSelect(node: any) {
-        const select = document.createElement('select');
-        select.className = 'input ds-select';
-        const options = this.modelEfforts[node.data.model] || this.modelEfforts[this.modelOptions[0]] || [];
-        if (!options.includes(node.data.reasoningEffort)) {
-            node.data.reasoningEffort = options[0];
-        }
-        options.forEach((optValue: any) => {
-            const opt = document.createElement('option');
-            opt.value = optValue;
-            opt.text = optValue.charAt(0).toUpperCase() + optValue.slice(1);
-            if (node.data.reasoningEffort === optValue) opt.selected = true;
-            select.appendChild(opt);
-        });
-        select.addEventListener('change', (e: any) => {
-            node.data.reasoningEffort = e.target.value;
-        });
-        return select;
-    }
-
     zoomCanvas(stepPercent: any) {
         if (!this.canvas) return;
         const snappedScale = Math.round(this.viewport.scale * 10) / 10;
@@ -837,9 +827,8 @@ export class WorkflowEditor {
     }
 
     initButtons() {
-        const runBtn = document.getElementById('btn-run');
-        if (runBtn) {
-            runBtn.addEventListener('click', () => this.runWorkflow());
+        if (this.runButton) {
+            this.runButton.addEventListener('click', () => this.runWorkflow());
         }
         const cancelRunBtn = document.getElementById('btn-cancel-run');
         if (cancelRunBtn) {
@@ -867,13 +856,6 @@ export class WorkflowEditor {
             }
             this.setWorkflowState('idle');
         });
-        }
-        
-        if (this.approveBtn) {
-            this.approveBtn.addEventListener('click', () => this.submitApprovalDecision('approve'));
-        }
-        if (this.rejectBtn) {
-            this.rejectBtn.addEventListener('click', () => this.submitApprovalDecision('reject'));
         }
 
         const zoomInBtn = document.getElementById('btn-zoom-in');
@@ -903,7 +885,7 @@ export class WorkflowEditor {
             const content = document.createElement('p');
             content.textContent = message;
 
-            return await new Promise((resolve: any) => {
+            return await new Promise<boolean>((resolve) => {
                 let confirmed = false;
 
                 const modal = new ModalCtor({
@@ -956,10 +938,10 @@ export class WorkflowEditor {
         this.updateRunButton();
     }
 
-    upgradeLegacyNodes(shouldRender: any = false) {
+    upgradeLegacyNodes(shouldRender: boolean = false) {
         let updated = false;
         const ifNodeIds = new Set();
-        this.nodes.forEach((node: any) => {
+        this.nodes.forEach((node) => {
             if (node.type === 'input') {
                 node.type = 'approval';
                 if (node.data && node.data.prompt === undefined) {
@@ -975,7 +957,7 @@ export class WorkflowEditor {
                 const rawConditions = Array.isArray(node.data.conditions) && node.data.conditions.length > 0
                     ? node.data.conditions
                     : [{ operator: 'contains', value: rawLegacyCondition }];
-                node.data.conditions = rawConditions.map((condition: any) => this.normalizeIfCondition(condition));
+                node.data.conditions = rawConditions.map((condition) => this.normalizeIfCondition(condition));
                 if (node.data.conditions.length === 0) {
                     node.data.conditions = [{ ...DEFAULT_IF_CONDITION }];
                 }
@@ -986,7 +968,7 @@ export class WorkflowEditor {
             }
         });
 
-        this.connections.forEach((connection: any) => {
+        this.connections.forEach((connection) => {
             if (!ifNodeIds.has(connection.source)) return;
             if (connection.sourceHandle === 'true') {
                 connection.sourceHandle = this.getIfConditionHandle(0);
@@ -1044,7 +1026,7 @@ export class WorkflowEditor {
         }, 500);
     }
 
-    saveRunId(runId: any) {
+    saveRunId(runId: string) {
         try { localStorage.setItem(WorkflowEditor.RUN_KEY, runId); } catch { /* ignore */ }
     }
 
@@ -1065,8 +1047,8 @@ export class WorkflowEditor {
         try {
             const raw = localStorage.getItem(WorkflowEditor.STORAGE_KEY);
             if (raw) {
-                const graph = JSON.parse(raw);
-                if (graph.nodes?.length) {
+                const graph = JSON.parse(raw) as unknown;
+                if (this.isValidGraphInput(graph) && graph.nodes.length > 0) {
                     this.loadWorkflow(graph);
                     return; // localStorage wins — skip server fetch
                 }
@@ -1083,7 +1065,8 @@ export class WorkflowEditor {
         try {
             const res = await fetch('/api/default-workflow');
             if (!res.ok) return;
-            const graph = await res.json();
+            const graph = await res.json() as unknown;
+            if (!this.isValidGraphInput(graph)) return;
             this.loadWorkflow(graph);
         } catch {
             // keep the default start node already rendered synchronously
@@ -1103,7 +1086,7 @@ export class WorkflowEditor {
     }
 
     addDefaultStartNode() {
-        const startExists = this.nodes.some((n: any) => n.type === 'start');
+        const startExists = this.nodes.some((n) => n.type === 'start');
         if (startExists) return;
         const { x, y } = this.getDefaultStartPosition();
         this.addNode('start', x, y);
@@ -1156,9 +1139,9 @@ export class WorkflowEditor {
         return ['agent', 'if', 'approval'].includes(node.type);
     }
 
-    deleteNode(id: any) {
-        this.nodes = this.nodes.filter((n: any) => n.id !== id);
-        this.connections = this.connections.filter((c: any) => c.source !== id && c.target !== id);
+    deleteNode(id: string) {
+        this.nodes = this.nodes.filter((n) => n.id !== id);
+        this.connections = this.connections.filter((c) => c.source !== id && c.target !== id);
         this.render();
         this.updateRunButton();
     }
@@ -1169,7 +1152,7 @@ export class WorkflowEditor {
         if (!this.nodesLayer || !this.connectionsLayer) return;
         this.nodesLayer.innerHTML = '';
         this.connectionsLayer.innerHTML = '';
-        this.nodes.forEach((n: any) => this.renderNode(n));
+        this.nodes.forEach((n) => this.renderNode(n));
         this.renderConnections(); // renderConnections() already calls scheduleSave()
         this.updateRunButton();
     }
@@ -1711,7 +1694,7 @@ export class WorkflowEditor {
         }
     }
 
-    onConnectionLineMouseDown(e: any, connection: any, connIndex: any) {
+    onConnectionLineMouseDown(e: any, connection: WorkflowConnection, connIndex: number) {
         e.stopPropagation();
         e.preventDefault();
         if (!this.connectionsLayer) return;
@@ -1728,11 +1711,11 @@ export class WorkflowEditor {
         const startY = sourceNode.y + startYOffset;
         const world = this.screenToWorld(e.clientX, e.clientY);
         
-        this.connectionStart = { 
-            nodeId: connection.source, 
-            handle: connection.sourceHandle, 
-            x: startX, 
-            y: startY 
+        this.connectionStart = {
+            nodeId: connection.source,
+            handle: connection.sourceHandle ?? '',
+            x: startX,
+            y: startY
         };
         
         // Remove the original connection temporarily
@@ -1782,7 +1765,7 @@ export class WorkflowEditor {
         this.scheduleSave();
     }
 
-    getPathD(startX: any, startY: any, endX: any, endY: any) {
+    getPathD(startX: number, startY: number, endX: number, endY: number): string {
         const controlPointOffset = Math.abs(endX - startX) * 0.5;
         return `M ${startX} ${startY} C ${startX + controlPointOffset} ${startY}, ${endX - controlPointOffset} ${endY}, ${endX} ${endY}`;
     }
@@ -2003,7 +1986,7 @@ export class WorkflowEditor {
         if (this.workflowState !== 'idle') return;
 
         this.upgradeLegacyNodes();
-        const startNode = this.nodes.find((n: any) => n.type === 'start');
+        const startNode = this.nodes.find((n) => n.type === 'start');
         if (!startNode) {
             alert('Add a Start node and connect your workflow before running.');
             return;
@@ -2030,7 +2013,7 @@ export class WorkflowEditor {
             const result = await runWorkflowStream(
                 graph,
                 (entry: any) => this.onLogEntry(entry),
-                { signal: controller.signal, onStart: (id: any) => this.saveRunId(id) }
+                { signal: controller.signal, onStart: (id: string) => this.saveRunId(id) }
             );
             this.handleRunResult(result, true);
 
@@ -2080,10 +2063,8 @@ export class WorkflowEditor {
             this.currentRunId = null;
         } else {
             this.clearApprovalMessage();
-            if (result.status !== 'paused') {
-                this.hideAgentSpinner();
-                this.setWorkflowState('idle');
-            }
+            this.hideAgentSpinner();
+            this.setWorkflowState('idle');
         }
     }
 
@@ -2124,7 +2105,7 @@ export class WorkflowEditor {
         }
     }
 
-    pollForRun(runId: any, knownLogCount: any) {
+    pollForRun(runId: string, knownLogCount: number) {
         this.pollTimer = setTimeout(async () => {
             this.pollTimer = null;
             let result;
