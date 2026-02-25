@@ -41,6 +41,7 @@ export interface WorkflowRunResult {
   state: Record<string, unknown>;
   waitingForInput: boolean;
   currentNodeId: string | null;
+  workflow?: WorkflowGraph;
 }
 
 export interface WorkflowRunRecord {
@@ -60,4 +61,3 @@ export interface ApprovalInput {
 }
 
 export interface WorkflowEngineResult extends WorkflowRunResult {}
-

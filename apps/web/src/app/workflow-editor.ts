@@ -1,6 +1,6 @@
 // Bespoke Agent Builder - Client Logic
 
-import type { WorkflowConnection, WorkflowNode, WorkflowRunResult } from '@agentic/types';
+import type { WorkflowConnection, WorkflowGraph, WorkflowNode, WorkflowRunResult } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
@@ -223,6 +223,8 @@ export class WorkflowEditor {
 
     private currentRunId: string | null;
 
+    private activeRunGraph: WorkflowGraphPayload | null;
+
     private runHistory: RunHistoryEntry[];
 
     private getErrorMessage(error: unknown): string {
@@ -239,6 +241,36 @@ export class WorkflowEditor {
             const candidate = node as { id?: unknown; type?: unknown };
             return typeof candidate.id === 'string' && typeof candidate.type === 'string';
         });
+    }
+
+    private cloneGraphPayload(graph: WorkflowGraphPayload): WorkflowGraphPayload {
+        return JSON.parse(JSON.stringify(graph)) as WorkflowGraphPayload;
+    }
+
+    private setActiveRunGraph(graph: WorkflowGraphPayload | null): void {
+        this.activeRunGraph = graph ? this.cloneGraphPayload(graph) : null;
+    }
+
+    private syncActiveRunGraphFromResult(result: WorkflowRunResult): void {
+        const workflow: WorkflowGraph | undefined = result.workflow;
+        if (!workflow || !Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) return;
+        this.setActiveRunGraph({
+            nodes: workflow.nodes as EditorNode[],
+            connections: workflow.connections
+        });
+    }
+
+    private getRunNodes(): EditorNode[] {
+        return this.activeRunGraph?.nodes ?? this.nodes;
+    }
+
+    private getRunConnections(): WorkflowConnection[] {
+        return this.activeRunGraph?.connections ?? this.connections;
+    }
+
+    private getRunNodeById(nodeId: string | null | undefined): EditorNode | undefined {
+        if (!nodeId) return undefined;
+        return this.getRunNodes().find((node) => node.id === nodeId);
     }
 
     constructor() {
@@ -279,6 +311,7 @@ export class WorkflowEditor {
         this.activeRunController = null;
         this.lastLlmResponseContent = null;
         this.currentRunId = null;
+        this.activeRunGraph = null;
         this.runHistory = [];
 
         this.splitPanelCtorPromise = null;
@@ -431,7 +464,7 @@ export class WorkflowEditor {
     }
 
     getPrimaryAgentName() {
-        const agentNode = this.nodes.find((n) => n.type === 'agent');
+        const agentNode = this.getRunNodes().find((n) => n.type === 'agent');
         if (agentNode && agentNode.data) {
             const name = (agentNode.data.agentName || '').trim();
             if (name) return name;
@@ -651,6 +684,7 @@ export class WorkflowEditor {
             this.clearApprovalMessage();
             this.appendStatusMessage('Cancelled');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
             this.setWorkflowState('idle');
         }
     }
@@ -724,6 +758,16 @@ export class WorkflowEditor {
         return null;
     }
 
+    getClearDisableReason(): string | null {
+        if (this.workflowState === 'running') {
+            return 'Cannot clear canvas while workflow is running.';
+        }
+        if (this.workflowState === 'paused') {
+            return 'Cannot clear canvas while workflow is paused waiting for approval.';
+        }
+        return null;
+    }
+
     updateRunButton() {
         if (!this.runButton) return;
         if (this.cancelRunButton) {
@@ -733,9 +777,7 @@ export class WorkflowEditor {
         }
 
         if (this.clearButton) {
-            const clearDisabledReason = this.workflowState === 'running'
-                ? 'Cannot clear canvas while workflow is running.'
-                : null;
+            const clearDisabledReason = this.getClearDisableReason();
             this.clearButton.disabled = Boolean(clearDisabledReason);
             this.setClearButtonHint(clearDisabledReason);
         }
@@ -935,7 +977,7 @@ export class WorkflowEditor {
         }
         if (this.clearButton) {
             this.clearButton.addEventListener('click', async () => {
-                if (this.workflowState === 'running') return;
+                if (this.workflowState !== 'idle') return;
                 const confirmed = await this.openConfirmModal({
                     title: 'Clear Canvas',
                     message: 'Remove all nodes and connections from the canvas?',
@@ -1326,7 +1368,8 @@ export class WorkflowEditor {
             duplicateBtn.innerHTML = '<span class="icon icon-content icon-primary"></span>';
             duplicateBtn.title = 'Duplicate Agent';
             duplicateBtn.setAttribute('data-tooltip', 'Duplicate Agent');
-            duplicateBtn.addEventListener('mousedown', (e: any) => {
+            duplicateBtn.setAttribute('aria-label', 'Duplicate Agent');
+            duplicateBtn.addEventListener('click', (e: any) => {
                 e.stopPropagation();
                 this.duplicateAgentNode(node);
             });
@@ -2031,7 +2074,7 @@ export class WorkflowEditor {
     showApprovalMessage(nodeId: any) {
         if (!this.chatMessages) return;
         this.clearApprovalMessage();
-        const node = this.nodes.find((n: any) => n.id === nodeId);
+        const node = this.getRunNodeById(nodeId);
         const messageText = node?.data?.prompt || 'Approval required before continuing.';
 
         const message = document.createElement('div');
@@ -2093,11 +2136,11 @@ export class WorkflowEditor {
     }
 
     getApprovalNextNode(nodeId: string, decision: 'approve' | 'reject'): EditorNode | undefined {
-        const connection = this.connections.find(
+        const connection = this.getRunConnections().find(
             (conn: any) => conn.source === nodeId && conn.sourceHandle === decision
         );
         if (!connection) return undefined;
-        return this.nodes.find((node: any) => node.id === connection.target);
+        return this.getRunNodes().find((node: any) => node.id === connection.target);
     }
 
     extractWaitingNodeId(logs: any = []) {
@@ -2174,12 +2217,15 @@ export class WorkflowEditor {
 
     isApprovalInputLog(entry: any): boolean {
         if (!entry || entry.type !== 'input_received') return false;
-        const node = this.nodes.find((n: any) => n.id === entry.nodeId);
+        const node = this.getRunNodeById(entry.nodeId);
         return node?.type === 'approval' || node?.type === 'input';
     }
 
     parseApprovalInputLog(content: string): { decision: 'approve' | 'reject'; note: string } {
-        const decision = content.toLowerCase().includes('rejected') ? 'reject' : 'approve';
+        const decisionPrefixMatch = content.match(/(?:^|\n)\s*(?:Decision|Status)\s*:\s*(approve|approved|reject|rejected)\b/i);
+        const sentencePrefixMatch = content.match(/(?:^|\n)\s*User\s+(approved|rejected)\b/i);
+        const rawDecision = (decisionPrefixMatch?.[1] || sentencePrefixMatch?.[1] || 'approve').toLowerCase();
+        const decision = rawDecision.startsWith('reject') ? 'reject' : 'approve';
         const feedbackMatch = content.match(/feedback:\s*(.*)$/i);
         const note = feedbackMatch?.[1]?.trim() || '';
         return { decision, note };
@@ -2195,14 +2241,14 @@ export class WorkflowEditor {
     }
 
     getAgentNameForNode(nodeId: string): string {
-        const node = this.nodes.find((n: any) => n.id === nodeId);
+        const node = this.getRunNodeById(nodeId);
         return (node?.data?.agentName || '').trim() || 'Agent';
     }
 
     onLogEntry(entry: any) {
         const type = entry.type || '';
         if (type === 'step_start') {
-            const node = this.nodes.find((n: any) => n.id === entry.nodeId);
+            const node = this.getRunNodeById(entry.nodeId);
             if (node?.type === 'agent') {
                 this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
             }
@@ -2271,10 +2317,11 @@ export class WorkflowEditor {
         if (!startNode.data) startNode.data = {};
         startNode.data.initialInput = this.currentPrompt;
 
-        const graph = {
+        const graph = this.cloneGraphPayload({
             nodes: this.nodes,
             connections: this.connections
-        };
+        });
+        this.setActiveRunGraph(graph);
         const controller = new AbortController();
         this.activeRunController = controller;
 
@@ -2291,6 +2338,7 @@ export class WorkflowEditor {
             this.appendChatMessage(this.getErrorMessage(e), 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
+            this.setActiveRunGraph(null);
             this.setWorkflowState('idle');
         } finally {
             if (this.activeRunController === controller) {
@@ -2300,6 +2348,7 @@ export class WorkflowEditor {
     }
 
     handleRunResult(result: WorkflowRunResult, fromStream = false) {
+        this.syncActiveRunGraphFromResult(result);
         if (!fromStream && result.logs) {
             this.renderChatFromLogs(result.logs);
         }
@@ -2324,6 +2373,7 @@ export class WorkflowEditor {
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
         } else if (result.status === 'failed') {
             this.clearRunId();
             this.clearApprovalMessage();
@@ -2331,10 +2381,12 @@ export class WorkflowEditor {
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
         } else {
             this.clearApprovalMessage();
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         }
     }
 
@@ -2350,7 +2402,13 @@ export class WorkflowEditor {
             // runId so recovery can be reattempted on the next page load.
             return;
         }
-        if (!result) { this.clearRunId(); return; } // 404 — run genuinely gone
+        if (!result) {
+            this.clearRunId();
+            this.setActiveRunGraph(null);
+            return;
+        } // 404 — run genuinely gone
+
+        this.syncActiveRunGraphFromResult(result);
 
         if (result.status === 'running') {
             // Engine still executing on server — show partial chat and poll for updates
@@ -2366,6 +2424,7 @@ export class WorkflowEditor {
             this.renderChatFromLogs(result.logs);
             this.appendStatusMessage('Previous paused run was lost (server restarted).', 'failed');
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         } else {
             // completed, failed, or paused-with-waitingForInput —
             // handleRunResult covers all three cases
@@ -2393,8 +2452,10 @@ export class WorkflowEditor {
                 // 404 — run is genuinely gone from server and disk
                 this.clearRunId();
                 this.setWorkflowState('idle');
+                this.setActiveRunGraph(null);
                 return;
             }
+            this.syncActiveRunGraphFromResult(result);
             // Re-render chat if new log entries arrived since last poll
             const logs = Array.isArray(result.logs) ? result.logs : [];
             if (logs.length > knownLogCount) {
@@ -2434,6 +2495,7 @@ export class WorkflowEditor {
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         } finally {
             if (this.activeRunController === controller) {
                 this.activeRunController = null;

@@ -636,7 +636,7 @@ path.connection-line.active {
 }
 
 .prompt-highlight-wrapper.is-editing .prompt-highlight-input::selection {
-    background: rgba(92, 148, 255, 0.24);
+    background: color-mix(in srgb, var(--Colors-Primary-Medium) 24%, transparent);
     color: inherit;
     -webkit-text-fill-color: inherit;
 }
