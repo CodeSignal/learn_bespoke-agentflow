@@ -1,6 +1,6 @@
 // Bespoke Agent Builder - Client Logic
 
-import type { WorkflowConnection, WorkflowNode, WorkflowRunResult } from '@agentic/types';
+import type { WorkflowConnection, WorkflowGraph, WorkflowNode, WorkflowRunResult } from '@agentic/types';
 import { runWorkflowStream, resumeWorkflow, fetchConfig, fetchRun } from '../services/api';
 import { renderMarkdown, escapeHtml } from './markdown';
 
@@ -20,6 +20,9 @@ const IF_CONDITION_HANDLE_PREFIX = 'condition-';
 const IF_FALLBACK_HANDLE = 'false';
 const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
+const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
+const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
+const PREVIOUS_OUTPUT_TEMPLATE = '{{PREVIOUS_OUTPUT}}';
 const IF_CONDITION_OPERATORS = [
     { value: 'equal', label: 'Equal' },
     { value: 'contains', label: 'Contains' }
@@ -186,6 +189,8 @@ export class WorkflowEditor {
 
     private cancelRunButton: HTMLButtonElement | null;
 
+    private clearButton: HTMLButtonElement | null;
+
     private zoomValue: HTMLElement | null;
 
     private workflowState: WorkflowState;
@@ -218,6 +223,8 @@ export class WorkflowEditor {
 
     private currentRunId: string | null;
 
+    private activeRunGraph: WorkflowGraphPayload | null;
+
     private runHistory: RunHistoryEntry[];
 
     private getErrorMessage(error: unknown): string {
@@ -234,6 +241,36 @@ export class WorkflowEditor {
             const candidate = node as { id?: unknown; type?: unknown };
             return typeof candidate.id === 'string' && typeof candidate.type === 'string';
         });
+    }
+
+    private cloneGraphPayload(graph: WorkflowGraphPayload): WorkflowGraphPayload {
+        return JSON.parse(JSON.stringify(graph)) as WorkflowGraphPayload;
+    }
+
+    private setActiveRunGraph(graph: WorkflowGraphPayload | null): void {
+        this.activeRunGraph = graph ? this.cloneGraphPayload(graph) : null;
+    }
+
+    private syncActiveRunGraphFromResult(result: WorkflowRunResult): void {
+        const workflow: WorkflowGraph | undefined = result.workflow;
+        if (!workflow || !Array.isArray(workflow.nodes) || !Array.isArray(workflow.connections)) return;
+        this.setActiveRunGraph({
+            nodes: workflow.nodes as EditorNode[],
+            connections: workflow.connections
+        });
+    }
+
+    private getRunNodes(): EditorNode[] {
+        return this.activeRunGraph?.nodes ?? this.nodes;
+    }
+
+    private getRunConnections(): WorkflowConnection[] {
+        return this.activeRunGraph?.connections ?? this.connections;
+    }
+
+    private getRunNodeById(nodeId: string | null | undefined): EditorNode | undefined {
+        if (!nodeId) return undefined;
+        return this.getRunNodes().find((node) => node.id === nodeId);
     }
 
     constructor() {
@@ -264,6 +301,7 @@ export class WorkflowEditor {
         this.initialPrompt = document.getElementById('initial-prompt') as HTMLInputElement | HTMLTextAreaElement | null;
         this.runButton = document.getElementById('btn-run') as HTMLButtonElement | null;
         this.cancelRunButton = document.getElementById('btn-cancel-run') as HTMLButtonElement | null;
+        this.clearButton = document.getElementById('btn-clear') as HTMLButtonElement | null;
         this.zoomValue = document.getElementById('zoom-value');
         this.workflowState = 'idle';
         this.rightPanel = document.getElementById('right-panel');
@@ -273,6 +311,7 @@ export class WorkflowEditor {
         this.activeRunController = null;
         this.lastLlmResponseContent = null;
         this.currentRunId = null;
+        this.activeRunGraph = null;
         this.runHistory = [];
 
         this.splitPanelCtorPromise = null;
@@ -425,7 +464,7 @@ export class WorkflowEditor {
     }
 
     getPrimaryAgentName() {
-        const agentNode = this.nodes.find((n) => n.type === 'agent');
+        const agentNode = this.getRunNodes().find((n) => n.type === 'agent');
         if (agentNode && agentNode.data) {
             const name = (agentNode.data.agentName || '').trim();
             if (name) return name;
@@ -443,6 +482,14 @@ export class WorkflowEditor {
         // offsetWidth forces a synchronous reflow that returns the correct value.
         const el = document.getElementById(node.id);
         return el ? (el.offsetWidth || DEFAULT_NODE_WIDTH) : DEFAULT_NODE_WIDTH;
+    }
+
+    getUserPromptHighlightHTML(value: string): string {
+        const escapedValue = escapeHtml(value || '');
+        return escapedValue.replace(
+            /\{\{PREVIOUS_OUTPUT\}\}/g,
+            '<span class="prompt-highlight-token">{{PREVIOUS_OUTPUT}}</span>',
+        );
     }
 
     normalizeIfCondition(condition: unknown): IfCondition {
@@ -468,6 +515,65 @@ export class WorkflowEditor {
 
     getIfPortTop(index: number): number {
         return IF_PORT_BASE_TOP + (index * IF_PORT_STEP);
+    }
+
+    getIfConditionPortTop(node: EditorNode, index: number): number {
+        if (node.data?.collapsed) {
+            return this.getIfPortTop(index);
+        }
+
+        const nodeEl = document.getElementById(node.id);
+        if (!nodeEl) {
+            return this.getIfPortTop(index);
+        }
+
+        const conditionRows = Array.from(nodeEl.querySelectorAll('.condition-row')) as HTMLElement[];
+        const row = conditionRows[index];
+        if (!row) {
+            return this.getIfPortTop(index);
+        }
+
+        return Math.round(row.offsetTop + (row.offsetHeight / 2) - 6);
+    }
+
+    getIfFallbackPortTop(node: EditorNode): number {
+        const conditions = this.getIfConditions(node);
+        if (node.data?.collapsed) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const nodeEl = document.getElementById(node.id);
+        if (!nodeEl) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const conditionRows = Array.from(nodeEl.querySelectorAll('.condition-row')) as HTMLElement[];
+        const addConditionButton = nodeEl.querySelector('.add-condition-btn') as HTMLElement | null;
+        if (addConditionButton) {
+            return Math.round(addConditionButton.offsetTop + (addConditionButton.offsetHeight / 2) - 6);
+        }
+        if (conditionRows.length === 0) {
+            return this.getIfPortTop(conditions.length);
+        }
+
+        const lastRow = conditionRows[conditionRows.length - 1];
+        const lastCenterTop = lastRow.offsetTop + (lastRow.offsetHeight / 2) - 6;
+        const dynamicStep = conditionRows.length > 1
+            ? conditionRows[conditionRows.length - 1].offsetTop - conditionRows[conditionRows.length - 2].offsetTop
+            : IF_PORT_STEP;
+
+        return Math.round(lastCenterTop + dynamicStep);
+    }
+
+    shouldAggregateCollapsedIfPorts(node: EditorNode): boolean {
+        return node.type === 'if' && Boolean(node.data?.collapsed) && this.getIfConditions(node).length > 1;
+    }
+
+    refreshNodePorts(node: EditorNode): void {
+        const el = document.getElementById(node.id);
+        if (!el) return;
+        el.querySelectorAll('.port').forEach((port) => port.remove());
+        this.renderPorts(node, el);
     }
 
     getIfConditions(node: EditorNode): IfCondition[] {
@@ -514,12 +620,21 @@ export class WorkflowEditor {
 
     getOutputPortCenterYOffset(node: EditorNode, sourceHandle?: string): number {
         if (node.type === 'if') {
+            if (this.shouldAggregateCollapsedIfPorts(node)) {
+                if (sourceHandle === IF_FALLBACK_HANDLE) {
+                    return IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP + 6;
+                }
+                const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
+                if (conditionIndex !== null) {
+                    return IF_COLLAPSED_MULTI_CONDITION_PORT_TOP + 6;
+                }
+            }
             if (sourceHandle === IF_FALLBACK_HANDLE) {
-                return this.getIfPortTop(this.getIfConditions(node).length) + 6;
+                return this.getIfFallbackPortTop(node) + 6;
             }
             const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
             if (conditionIndex !== null) {
-                return this.getIfPortTop(conditionIndex) + 6;
+                return this.getIfConditionPortTop(node, conditionIndex) + 6;
             }
         }
 
@@ -542,6 +657,15 @@ export class WorkflowEditor {
         }
     }
 
+    setClearButtonHint(reason: string | null): void {
+        if (!this.clearButton) return;
+        if (reason) {
+            this.clearButton.setAttribute('data-disabled-hint', reason);
+        } else {
+            this.clearButton.removeAttribute('data-disabled-hint');
+        }
+    }
+
     isAbortError(error: unknown): boolean {
         if (!error) return false;
         if (error instanceof Error && error.name === 'AbortError') return true;
@@ -560,6 +684,7 @@ export class WorkflowEditor {
             this.clearApprovalMessage();
             this.appendStatusMessage('Cancelled');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
             this.setWorkflowState('idle');
         }
     }
@@ -633,12 +758,28 @@ export class WorkflowEditor {
         return null;
     }
 
+    getClearDisableReason(): string | null {
+        if (this.workflowState === 'running') {
+            return 'Cannot clear canvas while workflow is running.';
+        }
+        if (this.workflowState === 'paused') {
+            return 'Cannot clear canvas while workflow is paused waiting for approval.';
+        }
+        return null;
+    }
+
     updateRunButton() {
         if (!this.runButton) return;
         if (this.cancelRunButton) {
             const showCancel = this.workflowState === 'running';
             this.cancelRunButton.style.display = showCancel ? 'inline-flex' : 'none';
             this.cancelRunButton.disabled = !showCancel;
+        }
+
+        if (this.clearButton) {
+            const clearDisabledReason = this.getClearDisableReason();
+            this.clearButton.disabled = Boolean(clearDisabledReason);
+            this.setClearButtonHint(clearDisabledReason);
         }
         
         switch (this.workflowState) {
@@ -834,28 +975,28 @@ export class WorkflowEditor {
         if (cancelRunBtn) {
             cancelRunBtn.addEventListener('click', () => this.cancelRunningWorkflow());
         }
-        const clearBtn = document.getElementById('btn-clear');
-        if (clearBtn) {
-            clearBtn.addEventListener('click', async () => {
-            const confirmed = await this.openConfirmModal({
-                title: 'Clear Canvas',
-                message: 'Remove all nodes and connections from the canvas?',
-                confirmLabel: 'Clear',
-                cancelLabel: 'Keep'
+        if (this.clearButton) {
+            this.clearButton.addEventListener('click', async () => {
+                if (this.workflowState !== 'idle') return;
+                const confirmed = await this.openConfirmModal({
+                    title: 'Clear Canvas',
+                    message: 'Remove all nodes and connections from the canvas?',
+                    confirmLabel: 'Clear',
+                    cancelLabel: 'Keep'
+                });
+                if(!confirmed) return;
+                this.nodes = [];
+                this.connections = [];
+                this.render();
+                this.addDefaultStartNode();
+                this.currentPrompt = '';
+                this.currentRunId = null;
+                this.clearRunId();
+                if (this.chatMessages) {
+                    this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
+                }
+                this.setWorkflowState('idle');
             });
-            if(!confirmed) return;
-            this.nodes = [];
-            this.connections = [];
-            this.render();
-            this.addDefaultStartNode();
-            this.currentPrompt = '';
-            this.currentRunId = null;
-            this.clearRunId();
-            if (this.chatMessages) {
-                this.chatMessages.innerHTML = '<div class="chat-message system">Canvas cleared. Start building your next workflow.</div>';
-            }
-            this.setWorkflowState('idle');
-        });
         }
 
         const zoomInBtn = document.getElementById('btn-zoom-in');
@@ -1146,6 +1287,40 @@ export class WorkflowEditor {
         this.updateRunButton();
     }
 
+    duplicateAgentNode(sourceNode: EditorNode): void {
+        if (sourceNode.type !== 'agent') return;
+        const duplicatedData = sourceNode.data
+            ? JSON.parse(JSON.stringify(sourceNode.data)) as WorkflowNodeData
+            : {};
+        duplicatedData.collapsed = true;
+
+        const sourceEl = document.getElementById(sourceNode.id);
+        const sourceHeight = sourceEl?.offsetHeight
+            ?? (sourceNode.data?.collapsed ? 96 : 240);
+        const duplicatedCollapsedHeight = 96;
+        const duplicateSpacing = 24;
+        const minWorldY = 16;
+        const duplicateX = sourceNode.x;
+        const proposedAboveY = sourceNode.y - duplicatedCollapsedHeight - duplicateSpacing;
+        const duplicateY = proposedAboveY >= minWorldY
+            ? proposedAboveY
+            : sourceNode.y + sourceHeight + duplicateSpacing;
+
+        const duplicatedNode: EditorNode = {
+            id: `node_${this.nextNodeId++}`,
+            type: 'agent',
+            x: duplicateX,
+            y: duplicateY,
+            data: duplicatedData
+        };
+
+        this.nodes.push(duplicatedNode);
+        this.renderNode(duplicatedNode);
+        this.selectNode(duplicatedNode.id);
+        this.scheduleSave();
+        this.updateRunButton();
+    }
+
     // --- RENDERING ---
 
     render() {
@@ -1185,6 +1360,22 @@ export class WorkflowEditor {
         const controls = document.createElement('div');
         controls.className = 'node-controls';
 
+        let duplicateBtn: HTMLButtonElement | null = null;
+        if (node.type === 'agent') {
+            duplicateBtn = document.createElement('button');
+            duplicateBtn.type = 'button';
+            duplicateBtn.className = 'button button-tertiary button-small icon-btn duplicate';
+            duplicateBtn.innerHTML = '<span class="icon icon-content icon-primary"></span>';
+            duplicateBtn.title = 'Duplicate Agent';
+            duplicateBtn.setAttribute('data-tooltip', 'Duplicate Agent');
+            duplicateBtn.setAttribute('aria-label', 'Duplicate Agent');
+            duplicateBtn.addEventListener('click', (e: any) => {
+                e.stopPropagation();
+                this.duplicateAgentNode(node);
+            });
+            controls.appendChild(duplicateBtn);
+        }
+
         let collapseBtn: HTMLButtonElement | null = null;
         let updateCollapseIcon = () => {};
         if (hasSettings) {
@@ -1194,7 +1385,9 @@ export class WorkflowEditor {
             collapseBtn.innerHTML = '<span class="icon icon-data-engineering icon-primary"></span>';
             updateCollapseIcon = () => {
                 if (!collapseBtn) return;
-                collapseBtn.title = node.data.collapsed ? 'Open settings' : 'Close settings';
+                const tooltip = node.data.collapsed ? 'Open settings' : 'Close settings';
+                collapseBtn.title = tooltip;
+                collapseBtn.setAttribute('data-tooltip', tooltip);
                 el.classList.toggle('expanded', !node.data.collapsed);
             };
             updateCollapseIcon();
@@ -1202,6 +1395,7 @@ export class WorkflowEditor {
                 e.stopPropagation();
                 node.data.collapsed = !node.data.collapsed;
                 updateCollapseIcon();
+                this.refreshNodePorts(node);
                 this.renderConnections();
             });
             controls.appendChild(collapseBtn);
@@ -1214,6 +1408,7 @@ export class WorkflowEditor {
             delBtn.className = 'button button-tertiary button-small icon-btn delete';
             delBtn.innerHTML = '<span class="icon icon-trash icon-danger"></span>';
             delBtn.title = 'Delete Node';
+            delBtn.setAttribute('data-tooltip', 'Delete Node');
             delBtn.addEventListener('mousedown', async (e: any) => {
                  e.stopPropagation(); 
                  const confirmed = await this.openConfirmModal({
@@ -1230,9 +1425,10 @@ export class WorkflowEditor {
 
         // Drag Handler
         header.addEventListener('mousedown', (e: any) => {
+            const interactingWithDuplicate = duplicateBtn && duplicateBtn.contains(e.target);
             const interactingWithCollapse = collapseBtn && collapseBtn.contains(e.target);
             const interactingWithDelete = delBtn && delBtn.contains(e.target);
-            if (interactingWithCollapse || interactingWithDelete) return;
+            if (interactingWithDuplicate || interactingWithCollapse || interactingWithDelete) return;
             
             e.stopPropagation();
             this.selectNode(node.id);
@@ -1249,6 +1445,7 @@ export class WorkflowEditor {
             e.stopPropagation();
             node.data.collapsed = !node.data.collapsed;
             updateCollapseIcon();
+            this.refreshNodePorts(node);
             this.renderConnections();
         });
 
@@ -1266,12 +1463,12 @@ export class WorkflowEditor {
         this.renderNodeForm(node, body);
         el.appendChild(body);
 
-        // Ports
-        this.renderPorts(node, el);
-
         if (this.nodesLayer) {
             this.nodesLayer.appendChild(el);
         }
+
+        // Render ports after mount so row-based offsets can be measured correctly.
+        this.renderPorts(node, el);
     }
 
     updateNodeHeader(node: any) {
@@ -1378,15 +1575,39 @@ export class WorkflowEditor {
 
             // Input
             container.appendChild(buildLabel('Input'));
+            const userInputWrapper = document.createElement('div');
+            userInputWrapper.className = 'prompt-highlight-wrapper';
+            const userInputHighlight = document.createElement('div');
+            userInputHighlight.className = 'prompt-highlight-backdrop';
+            userInputHighlight.setAttribute('aria-hidden', 'true');
+            const userInputHighlightContent = document.createElement('div');
+            userInputHighlightContent.className = 'prompt-highlight-content';
+            userInputHighlight.appendChild(userInputHighlightContent);
             const userInput = document.createElement('textarea');
-            userInput.className = 'input textarea-input';
+            userInput.className = 'input textarea-input prompt-highlight-input';
             userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
-            userInput.value = data.userPrompt ?? '{{PREVIOUS_OUTPUT}}';
+            userInput.value = data.userPrompt ?? PREVIOUS_OUTPUT_TEMPLATE;
+            const syncUserPromptHighlight = () => {
+                userInputHighlightContent.innerHTML = this.getUserPromptHighlightHTML(userInput.value);
+                userInputHighlightContent.style.transform = `translate(${-userInput.scrollLeft}px, ${-userInput.scrollTop}px)`;
+            };
+            syncUserPromptHighlight();
+            userInput.addEventListener('focus', () => {
+                userInputWrapper.classList.add('is-editing');
+            });
+            userInput.addEventListener('blur', () => {
+                userInputWrapper.classList.remove('is-editing');
+                syncUserPromptHighlight();
+            });
             userInput.addEventListener('input', (e: any) => {
                 data.userPrompt = e.target.value;
+                syncUserPromptHighlight();
                 this.scheduleSave();
             });
-            container.appendChild(userInput);
+            userInput.addEventListener('scroll', syncUserPromptHighlight);
+            userInputWrapper.appendChild(userInputHighlight);
+            userInputWrapper.appendChild(userInput);
+            container.appendChild(userInputWrapper);
 
             // Model
             container.appendChild(buildLabel('Model'));
@@ -1584,29 +1805,52 @@ export class WorkflowEditor {
         if (node.type !== 'end') {
             if (node.type === 'if') {
                 const conditions = this.getIfConditions(node);
-                conditions.forEach((condition: any, index: any) => {
-                    const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
-                    const conditionValue = condition.value || '';
-                    const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                if (this.shouldAggregateCollapsedIfPorts(node)) {
+                    const title = `${conditions.length} condition branches (expand to wire specific branches)`;
+                    const aggregateConditionPort = this.createPort(
+                        node.id,
+                        this.getIfConditionHandle(0),
+                        'port-out port-condition port-condition-aggregate',
+                        title,
+                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP
+                    );
+                    aggregateConditionPort.textContent = String(conditions.length);
+                    aggregateConditionPort.setAttribute('aria-label', `${conditions.length} conditions`);
+                    el.appendChild(aggregateConditionPort);
                     el.appendChild(
                         this.createPort(
                             node.id,
-                            this.getIfConditionHandle(index),
-                            'port-out port-condition',
-                            title,
-                            this.getIfPortTop(index)
+                            IF_FALLBACK_HANDLE,
+                            'port-out port-condition-fallback',
+                            'False fallback',
+                            IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP
                         )
                     );
-                });
-                el.appendChild(
-                    this.createPort(
-                        node.id,
-                        IF_FALLBACK_HANDLE,
-                        'port-out port-condition-fallback',
-                        'False fallback',
-                        this.getIfPortTop(conditions.length)
-                    )
-                );
+                } else {
+                    conditions.forEach((condition: any, index: any) => {
+                        const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
+                        const conditionValue = condition.value || '';
+                        const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                        el.appendChild(
+                            this.createPort(
+                                node.id,
+                                this.getIfConditionHandle(index),
+                                'port-out port-condition',
+                                title,
+                                this.getIfConditionPortTop(node, index)
+                            )
+                        );
+                    });
+                    el.appendChild(
+                        this.createPort(
+                            node.id,
+                            IF_FALLBACK_HANDLE,
+                            'port-out port-condition-fallback',
+                            'False fallback',
+                            this.getIfFallbackPortTop(node)
+                        )
+                    );
+                }
             } else if (node.type === 'approval') {
                 el.appendChild(this.createPort(node.id, 'approve', 'port-out port-true', 'Approve'));
                 el.appendChild(this.createPort(node.id, 'reject', 'port-out port-false', 'Reject'));
@@ -1780,6 +2024,11 @@ export class WorkflowEditor {
         if (!this.pendingApprovalRequest?.container) return;
         
         const container = this.pendingApprovalRequest.container;
+        this.renderApprovalResultCard(container, decision, note);
+        this.pendingApprovalRequest = null;
+    }
+
+    renderApprovalResultCard(container: HTMLElement, decision: 'approve' | 'reject', note: string = '') {
         container.className = 'chat-message approval-result';
         container.classList.add(decision === 'approve' ? 'approved' : 'rejected');
         
@@ -1788,19 +2037,29 @@ export class WorkflowEditor {
         const text = decision === 'approve' ? 'Approved' : 'Rejected';
         
         container.innerHTML = '';
+
+        const labelEl = document.createElement('span');
+        labelEl.className = 'chat-message-label';
+        labelEl.textContent = 'Approval decision';
+        container.appendChild(labelEl);
         
         const content = document.createElement('div');
         content.className = 'approval-result-content';
+
+        const status = document.createElement('div');
+        status.className = 'approval-result-status';
         
         const iconEl = document.createElement('span');
         iconEl.className = 'approval-result-icon';
         iconEl.textContent = icon;
-        content.appendChild(iconEl);
+        status.appendChild(iconEl);
         
         const textEl = document.createElement('span');
         textEl.className = 'approval-result-text';
         textEl.textContent = text;
-        content.appendChild(textEl);
+        status.appendChild(textEl);
+
+        content.appendChild(status);
         
         if (trimmedNote) {
             const noteEl = document.createElement('div');
@@ -1810,32 +2069,44 @@ export class WorkflowEditor {
         }
         
         container.appendChild(content);
-        this.pendingApprovalRequest = null;
     }
 
     showApprovalMessage(nodeId: any) {
         if (!this.chatMessages) return;
         this.clearApprovalMessage();
-        const node = this.nodes.find((n: any) => n.id === nodeId);
+        const node = this.getRunNodeById(nodeId);
         const messageText = node?.data?.prompt || 'Approval required before continuing.';
 
         const message = document.createElement('div');
         message.className = 'chat-message approval-request';
 
+        const labelEl = document.createElement('span');
+        labelEl.className = 'chat-message-label';
+        labelEl.textContent = 'Approval required';
+        message.appendChild(labelEl);
+
+        const body = document.createElement('div');
+        body.className = 'approval-body';
+
         const textEl = document.createElement('div');
         textEl.className = 'approval-text';
         textEl.textContent = messageText;
-        message.appendChild(textEl);
+        body.appendChild(textEl);
+
+        const helperEl = document.createElement('div');
+        helperEl.className = 'approval-helper';
+        helperEl.textContent = 'Choose how this workflow should proceed.';
+        body.appendChild(helperEl);
 
         const actions = document.createElement('div');
         actions.className = 'approval-actions';
 
         const rejectBtn = document.createElement('button');
-        rejectBtn.className = 'button button-danger reject-btn';
+        rejectBtn.className = 'button button-secondary reject-btn';
         rejectBtn.textContent = 'Reject';
 
         const approveBtn = document.createElement('button');
-        approveBtn.className = 'button button-success approve-btn';
+        approveBtn.className = 'button button-primary approve-btn';
         approveBtn.textContent = 'Approve';
 
         rejectBtn.addEventListener('click', () => this.submitApprovalDecision('reject'));
@@ -1843,7 +2114,8 @@ export class WorkflowEditor {
 
         actions.appendChild(rejectBtn);
         actions.appendChild(approveBtn);
-        message.appendChild(actions);
+        body.appendChild(actions);
+        message.appendChild(body);
 
         this.chatMessages.appendChild(message);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
@@ -1861,6 +2133,14 @@ export class WorkflowEditor {
         if (!this.pendingApprovalRequest) return;
         this.pendingApprovalRequest.approveBtn.disabled = disabled;
         this.pendingApprovalRequest.rejectBtn.disabled = disabled;
+    }
+
+    getApprovalNextNode(nodeId: string, decision: 'approve' | 'reject'): EditorNode | undefined {
+        const connection = this.getRunConnections().find(
+            (conn: any) => conn.source === nodeId && conn.sourceHandle === decision
+        );
+        if (!connection) return undefined;
+        return this.getRunNodes().find((node: any) => node.id === connection.target);
     }
 
     extractWaitingNodeId(logs: any = []) {
@@ -1911,14 +2191,16 @@ export class WorkflowEditor {
     startChatSession(_promptText: any) {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
-        this.showAgentSpinner();
+        if (typeof _promptText === 'string' && _promptText.trim()) {
+            this.appendChatMessage(_promptText, 'user');
+        }
     }
 
     mapLogEntryToRole(entry: any) {
         const type = entry.type || '';
         if (type.includes('llm_response')) return 'agent';
         if (type.includes('llm_error') || type === 'error') return 'error';
-        if (type.includes('input_received') || type.includes('start_prompt')) return 'user';
+        if (type.includes('input_received')) return 'user';
         return null;
     }
 
@@ -1927,23 +2209,47 @@ export class WorkflowEditor {
         return typeof content === 'string' ? content : '';
     }
 
+    getInitialPromptFromLogs(logs: any[] = []): string | null {
+        if (!Array.isArray(logs)) return null;
+        const entry = logs.find((item: any) => item?.type === 'start_prompt' && typeof item.content === 'string' && item.content.trim());
+        return entry?.content ?? null;
+    }
+
+    isApprovalInputLog(entry: any): boolean {
+        if (!entry || entry.type !== 'input_received') return false;
+        const node = this.getRunNodeById(entry.nodeId);
+        return node?.type === 'approval' || node?.type === 'input';
+    }
+
+    parseApprovalInputLog(content: string): { decision: 'approve' | 'reject'; note: string } {
+        const decisionPrefixMatch = content.match(/(?:^|\n)\s*(?:Decision|Status)\s*:\s*(approve|approved|reject|rejected)\b/i);
+        const sentencePrefixMatch = content.match(/(?:^|\n)\s*User\s+(approved|rejected)\b/i);
+        const rawDecision = (decisionPrefixMatch?.[1] || sentencePrefixMatch?.[1] || 'approve').toLowerCase();
+        const decision = rawDecision.startsWith('reject') ? 'reject' : 'approve';
+        const feedbackMatch = content.match(/feedback:\s*(.*)$/i);
+        const note = feedbackMatch?.[1]?.trim() || '';
+        return { decision, note };
+    }
+
+    appendApprovalResultFromLog(content: string): void {
+        if (!this.chatMessages) return;
+        const { decision, note } = this.parseApprovalInputLog(content);
+        const message = document.createElement('div');
+        this.renderApprovalResultCard(message, decision, note);
+        this.chatMessages.appendChild(message);
+        this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+
     getAgentNameForNode(nodeId: string): string {
-        const node = this.nodes.find((n: any) => n.id === nodeId);
+        const node = this.getRunNodeById(nodeId);
         return (node?.data?.agentName || '').trim() || 'Agent';
     }
 
     onLogEntry(entry: any) {
         const type = entry.type || '';
         if (type === 'step_start') {
-            const node = this.nodes.find((n: any) => n.id === entry.nodeId);
+            const node = this.getRunNodeById(entry.nodeId);
             if (node?.type === 'agent') {
-                this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
-            }
-        } else if (type === 'start_prompt') {
-            // Only show the user's initial input (before any agent has responded)
-            if (entry.content && this.lastLlmResponseContent === null) {
-                this.hideAgentSpinner();
-                this.appendChatMessage(entry.content, 'user');
                 this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId));
             }
         } else if (type === 'llm_response') {
@@ -1960,12 +2266,21 @@ export class WorkflowEditor {
         if (!this.chatMessages) return;
         this.chatMessages.innerHTML = '';
         this.lastLlmResponseContent = null;
+        const initialPromptFromLogs = this.getInitialPromptFromLogs(logs);
+        if (initialPromptFromLogs) {
+            this.appendChatMessage(initialPromptFromLogs, 'user');
+        }
         let messageShown = false;
         logs.forEach((entry: any) => {
+            if (this.isApprovalInputLog(entry)) {
+                const approvalText = this.formatLogContent(entry);
+                if (approvalText) {
+                    this.appendApprovalResultFromLog(approvalText);
+                }
+                return;
+            }
             const role = this.mapLogEntryToRole(entry);
             if (!role) return;
-            // Only show the user's initial input (before any agent has responded)
-            if (entry.type === 'start_prompt' && this.lastLlmResponseContent !== null) return;
             if (entry.type === 'llm_response') this.lastLlmResponseContent = entry.content ?? null;
             if ((role === 'agent' || role === 'error') && !messageShown) {
                 this.hideAgentSpinner();
@@ -2002,10 +2317,11 @@ export class WorkflowEditor {
         if (!startNode.data) startNode.data = {};
         startNode.data.initialInput = this.currentPrompt;
 
-        const graph = {
+        const graph = this.cloneGraphPayload({
             nodes: this.nodes,
             connections: this.connections
-        };
+        });
+        this.setActiveRunGraph(graph);
         const controller = new AbortController();
         this.activeRunController = controller;
 
@@ -2022,6 +2338,7 @@ export class WorkflowEditor {
             this.appendChatMessage(this.getErrorMessage(e), 'error');
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
+            this.setActiveRunGraph(null);
             this.setWorkflowState('idle');
         } finally {
             if (this.activeRunController === controller) {
@@ -2031,6 +2348,7 @@ export class WorkflowEditor {
     }
 
     handleRunResult(result: WorkflowRunResult, fromStream = false) {
+        this.syncActiveRunGraphFromResult(result);
         if (!fromStream && result.logs) {
             this.renderChatFromLogs(result.logs);
         }
@@ -2039,6 +2357,7 @@ export class WorkflowEditor {
             : false;
 
         if (result.status === 'paused' && result.waitingForInput) {
+            this.hideAgentSpinner();
             this.currentRunId = result.runId;
             const pausedNodeId = result.currentNodeId || this.extractWaitingNodeId(result.logs);
             this.showApprovalMessage(pausedNodeId);
@@ -2054,6 +2373,7 @@ export class WorkflowEditor {
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
         } else if (result.status === 'failed') {
             this.clearRunId();
             this.clearApprovalMessage();
@@ -2061,10 +2381,12 @@ export class WorkflowEditor {
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
             this.currentRunId = null;
+            this.setActiveRunGraph(null);
         } else {
             this.clearApprovalMessage();
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         }
     }
 
@@ -2080,7 +2402,13 @@ export class WorkflowEditor {
             // runId so recovery can be reattempted on the next page load.
             return;
         }
-        if (!result) { this.clearRunId(); return; } // 404 — run genuinely gone
+        if (!result) {
+            this.clearRunId();
+            this.setActiveRunGraph(null);
+            return;
+        } // 404 — run genuinely gone
+
+        this.syncActiveRunGraphFromResult(result);
 
         if (result.status === 'running') {
             // Engine still executing on server — show partial chat and poll for updates
@@ -2096,6 +2424,7 @@ export class WorkflowEditor {
             this.renderChatFromLogs(result.logs);
             this.appendStatusMessage('Previous paused run was lost (server restarted).', 'failed');
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         } else {
             // completed, failed, or paused-with-waitingForInput —
             // handleRunResult covers all three cases
@@ -2123,8 +2452,10 @@ export class WorkflowEditor {
                 // 404 — run is genuinely gone from server and disk
                 this.clearRunId();
                 this.setWorkflowState('idle');
+                this.setActiveRunGraph(null);
                 return;
             }
+            this.syncActiveRunGraphFromResult(result);
             // Re-render chat if new log entries arrived since last poll
             const logs = Array.isArray(result.logs) ? result.logs : [];
             if (logs.length > knownLogCount) {
@@ -2141,11 +2472,17 @@ export class WorkflowEditor {
 
     async submitApprovalDecision(decision: any) {
         if (!this.currentRunId) return;
+        const pendingApprovalNodeId = this.pendingApprovalRequest?.nodeId ?? null;
         this.setApprovalButtonsDisabled(true);
         const note = '';
         this.replaceApprovalWithResult(decision, note);
         this.setWorkflowState('running');
-        this.showAgentSpinner();
+        if (pendingApprovalNodeId) {
+            const nextNode = this.getApprovalNextNode(pendingApprovalNodeId, decision);
+            if (nextNode?.type === 'agent') {
+                this.showAgentSpinner(this.getAgentNameForNode(nextNode.id));
+            }
+        }
         const controller = new AbortController();
         this.activeRunController = controller;
         
@@ -2158,6 +2495,7 @@ export class WorkflowEditor {
             this.appendStatusMessage('Failed', 'failed');
             this.hideAgentSpinner();
             this.setWorkflowState('idle');
+            this.setActiveRunGraph(null);
         } finally {
             if (this.activeRunController === controller) {
                 this.activeRunController = null;

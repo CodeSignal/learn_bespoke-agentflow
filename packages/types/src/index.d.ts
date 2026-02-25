@@ -34,6 +34,7 @@ export interface WorkflowRunResult {
     state: Record<string, unknown>;
     waitingForInput: boolean;
     currentNodeId: string | null;
+    workflow?: WorkflowGraph;
 }
 export interface ApprovalInput {
     decision: 'approve' | 'reject';

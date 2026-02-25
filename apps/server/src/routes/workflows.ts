@@ -16,13 +16,7 @@ function validateGraph(graph: WorkflowGraph | undefined): graph is WorkflowGraph
 
 async function persistResult(engine: WorkflowEngine, result: WorkflowRunResult) {
   try {
-    // Backward compatibility: fall back to reading the private graph field if the engine
-    // instance doesn't yet expose getGraph (e.g., cached build).
-    const engineAny = engine as WorkflowEngine & { getGraph?: () => WorkflowGraph };
-    const workflow =
-      typeof engineAny.getGraph === 'function'
-        ? engineAny.getGraph()
-        : (Reflect.get(engine, 'graph') as WorkflowGraph | undefined);
+    const workflow = getEngineWorkflow(engine);
 
     if (!workflow) {
       throw new Error('Workflow graph not available on engine instance');
@@ -42,6 +36,15 @@ async function persistResult(engine: WorkflowEngine, result: WorkflowRunResult) 
   } catch (error) {
     logger.error('Failed to persist run result', error);
   }
+}
+
+function getEngineWorkflow(engine: WorkflowEngine): WorkflowGraph | undefined {
+  // Backward compatibility: fall back to private graph if getGraph is unavailable.
+  const engineAny = engine as WorkflowEngine & { getGraph?: () => WorkflowGraph };
+  if (typeof engineAny.getGraph === 'function') {
+    return engineAny.getGraph();
+  }
+  return Reflect.get(engine, 'graph') as WorkflowGraph | undefined;
 }
 
 export function createWorkflowRouter(llm?: WorkflowLLM): Router {
@@ -75,7 +78,8 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         removeWorkflow(runId);
       }
 
-      res.json(result);
+      const workflow = getEngineWorkflow(engine) ?? graph;
+      res.json({ ...result, workflow });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to execute workflow', message);
@@ -129,7 +133,8 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         removeWorkflow(runId);
       }
 
-      sendEvent({ type: 'done', result });
+      const workflow = getEngineWorkflow(engine) ?? graph;
+      sendEvent({ type: 'done', result: { ...result, workflow } });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to execute workflow stream', message);
@@ -160,7 +165,8 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         removeWorkflow(runId);
       }
 
-      res.json(result);
+      const workflow = getEngineWorkflow(engine);
+      res.json(workflow ? { ...result, workflow } : result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error('Failed to resume workflow', message);
@@ -201,7 +207,9 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
     // Check in-memory first — catches engines that are still running or paused
     const engine = getWorkflow(runId);
     if (engine) {
-      res.json(engine.getResult());
+      const result = engine.getResult();
+      const workflow = getEngineWorkflow(engine);
+      res.json(workflow ? { ...result, workflow } : result);
       return;
     }
 
@@ -221,6 +229,7 @@ export function createWorkflowRouter(llm?: WorkflowLLM): Router {
         state: record.state ?? {},
         waitingForInput: record.waitingForInput ?? false,
         currentNodeId: record.currentNodeId ?? null,
+        workflow: record.workflow
       };
       res.json(result);
     } catch (error) {
