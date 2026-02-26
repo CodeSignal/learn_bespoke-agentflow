@@ -42,6 +42,8 @@ npm run build:packages       # Build only shared packages (types + engine)
 
 **Approval/pause flow:** When engine hits an Approval node, it sets `waitingForInput=true` and the engine instance is stored in an in-memory `Map` (`store/active-workflows.ts`). Client calls `POST /api/resume` with user input to continue.
 
+**Agent backend:** Server agent execution is implemented through OpenAI Agents SDK (`apps/server/src/services/openai-agents-llm.ts`). Agent runs are capped with `maxTurns: 20` to bound loop iterations.
+
 **Build dependency chain:** `packages/types` → `packages/workflow-engine` → `apps/server` / `apps/web`. Always run `build:packages` before typechecking or building apps.
 
 ## Design System (Git Submodule)
@@ -106,3 +108,4 @@ Agent node `userPrompt` fields support `{{PREVIOUS_OUTPUT}}` as a template token
 - `data/runs/` is gitignored — created automatically at runtime.
 - `.config/default-workflow.json` is gitignored — create it locally to preload a workflow on startup.
 - Clone with `--recurse-submodules` to pull the design-system submodule.
+- In a brand new git worktree, run `git submodule update --init --recursive` before development so the design-system submodule is available.

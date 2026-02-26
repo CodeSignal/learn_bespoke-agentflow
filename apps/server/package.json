@@ -12,11 +12,11 @@
     "test": "npm run typecheck"
   },
   "dependencies": {
+    "@openai/agents": "^0.1.0",
     "@agentic/types": "file:../../packages/types",
     "@agentic/workflow-engine": "file:../../packages/workflow-engine",
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "openai": "^6.9.1"
+    "express": "^4.19.2"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",

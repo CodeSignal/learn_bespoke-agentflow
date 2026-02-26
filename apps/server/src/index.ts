@@ -2,13 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 import cors from 'cors';
-import OpenAI from 'openai';
 import type { WorkflowRunRecord } from '@agentic/types';
 import WorkflowEngine, { type WorkflowLLM } from '@agentic/workflow-engine';
 import { config } from './config';
 import { logger } from './logger';
 import { createWorkflowRouter } from './routes/workflows';
-import { OpenAILLMService } from './services/openai-llm';
+import { OpenAIAgentsLLMService } from './services/openai-agents-llm';
 import { addWorkflow } from './store/active-workflows';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -69,11 +68,10 @@ async function bootstrap() {
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
 
-  let llmService: OpenAILLMService | undefined;
+  let llmService: WorkflowLLM | undefined;
   if (config.openAiApiKey) {
-    logger.info('OPENAI_API_KEY detected, enabling live OpenAI responses');
-    const client = new OpenAI({ apiKey: config.openAiApiKey });
-    llmService = new OpenAILLMService(client);
+    logger.info('OPENAI_API_KEY detected, enabling live OpenAI Agents SDK backend');
+    llmService = new OpenAIAgentsLLMService();
   } else {
     logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
   }

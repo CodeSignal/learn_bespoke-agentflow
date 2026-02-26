@@ -22,7 +22,7 @@ data/
 
 - **Visual Editor** – Canvas, floating palette, zoom controls, and inline node forms for prompts, branching rules, and approval copy.
 - **Run Console** – Chat-style panel that renders agent responses progressively as they arrive via SSE, with per-agent labels, spinner states, and approval requests.
-- **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Responses API or mock).
+- **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Agents SDK).
 - **Persistent Audit Trail** – Every run writes `data/runs/run_<timestamp>.json` containing the workflow graph plus raw execution logs, independent of what the UI chooses to display.
 
 ## Getting Started
