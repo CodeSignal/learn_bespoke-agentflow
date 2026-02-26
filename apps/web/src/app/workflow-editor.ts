@@ -87,6 +87,16 @@ type RunHistoryEntry = {
     content: string;
 };
 
+type SubagentRuntimeLogPayload = {
+    parentNodeId?: string;
+    subagentNodeId: string;
+    subagentName: string;
+    callId: string;
+    parentCallId?: string;
+    depth: number;
+    message?: string;
+};
+
 type DropdownItem = {
     value: string;
     label: string;
@@ -211,6 +221,12 @@ export class WorkflowEditor {
 
     private pendingAgentMessageCounts: Map<string, number>;
 
+    private subagentCallElements: Map<string, HTMLElement>;
+
+    private subagentCallSpinnerKeys: Map<string, string>;
+
+    private spinnerSubagentCallIds: Map<string, Set<string>>;
+
     private currentPrompt: string;
 
     private pendingApprovalRequest: ApprovalRequest | null;
@@ -322,6 +338,9 @@ export class WorkflowEditor {
         this.rightPanel = document.getElementById('right-panel');
         this.pendingAgentMessages = new Map<string, HTMLElement>();
         this.pendingAgentMessageCounts = new Map<string, number>();
+        this.subagentCallElements = new Map<string, HTMLElement>();
+        this.subagentCallSpinnerKeys = new Map<string, string>();
+        this.spinnerSubagentCallIds = new Map<string, Set<string>>();
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
         this.activeRunController = null;
@@ -1126,6 +1145,24 @@ export class WorkflowEditor {
         this.runHistory.push({ role: 'user', content: text });
     }
 
+    clearSubagentSpinnerState(spinnerKey?: string): void {
+        if (spinnerKey) {
+            const callIds = this.spinnerSubagentCallIds.get(spinnerKey);
+            if (callIds) {
+                callIds.forEach((callId) => {
+                    this.subagentCallElements.delete(callId);
+                    this.subagentCallSpinnerKeys.delete(callId);
+                });
+            }
+            this.spinnerSubagentCallIds.delete(spinnerKey);
+            return;
+        }
+
+        this.subagentCallElements.clear();
+        this.subagentCallSpinnerKeys.clear();
+        this.spinnerSubagentCallIds.clear();
+    }
+
     showAgentSpinner(name?: string, nodeId?: string) {
         if (!this.chatMessages) return;
         const spinnerKey = nodeId || GENERIC_AGENT_SPINNER_KEY;
@@ -1150,6 +1187,7 @@ export class WorkflowEditor {
         body.appendChild(text);
         body.appendChild(dots);
         spinner.appendChild(body);
+
         this.chatMessages.appendChild(spinner);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
         this.pendingAgentMessages.set(spinnerKey, spinner);
@@ -1167,12 +1205,14 @@ export class WorkflowEditor {
             if (!spinner) return;
             spinner.remove();
             this.pendingAgentMessages.delete(nodeId);
+            this.clearSubagentSpinnerState(nodeId);
             return;
         }
 
         this.pendingAgentMessages.forEach((spinner) => spinner.remove());
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
     }
 
     zoomCanvas(stepPercent: any) {
@@ -2652,6 +2692,7 @@ export class WorkflowEditor {
         this.chatMessages.innerHTML = '';
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
         if (typeof _promptText === 'string' && _promptText.trim()) {
             this.appendChatMessage(_promptText, 'user');
         }
@@ -2706,6 +2747,167 @@ export class WorkflowEditor {
         return (node?.data?.agentName || '').trim() || 'Agent';
     }
 
+    isSubagentCallLogType(type: string): boolean {
+        return (
+            type === 'subagent_call_start' ||
+            type === 'subagent_call_end' ||
+            type === 'subagent_call_error'
+        );
+    }
+
+    parseSubagentRuntimeLogPayload(entry: any): SubagentRuntimeLogPayload | null {
+        if (!this.isSubagentCallLogType(entry?.type || '')) {
+            return null;
+        }
+        if (typeof entry?.content !== 'string' || !entry.content.trim()) {
+            return null;
+        }
+
+        try {
+            const parsed = JSON.parse(entry.content) as Partial<SubagentRuntimeLogPayload>;
+            if (
+                typeof parsed.callId !== 'string' ||
+                typeof parsed.subagentNodeId !== 'string' ||
+                typeof parsed.subagentName !== 'string' ||
+                typeof parsed.depth !== 'number'
+            ) {
+                return null;
+            }
+            return {
+                callId: parsed.callId,
+                subagentNodeId: parsed.subagentNodeId,
+                subagentName: parsed.subagentName,
+                depth: parsed.depth,
+                parentCallId: typeof parsed.parentCallId === 'string' ? parsed.parentCallId : undefined,
+                parentNodeId: typeof parsed.parentNodeId === 'string' ? parsed.parentNodeId : undefined,
+                message: typeof parsed.message === 'string' ? parsed.message : undefined
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    ensureSpinnerSubagentList(spinner: HTMLElement): HTMLElement {
+        const existing = spinner.querySelector('.chat-subagent-list');
+        if (existing instanceof HTMLElement) {
+            return existing;
+        }
+        const created = document.createElement('div');
+        created.className = 'chat-subagent-list';
+        spinner.appendChild(created);
+        return created;
+    }
+
+    ensureSubagentCallItem(spinnerKey: string, payload: SubagentRuntimeLogPayload): HTMLElement | null {
+        const existing = this.subagentCallElements.get(payload.callId);
+        if (existing) {
+            return existing;
+        }
+
+        const spinner = this.pendingAgentMessages.get(spinnerKey);
+        if (!spinner) {
+            return null;
+        }
+
+        const item = document.createElement('div');
+        item.className = 'chat-subagent-item running';
+        item.dataset.callId = payload.callId;
+        item.dataset.depth = String(payload.depth);
+
+        const row = document.createElement('div');
+        row.className = 'chat-subagent-row';
+        const name = document.createElement('span');
+        name.className = 'chat-subagent-name';
+        name.textContent = payload.subagentName;
+        const status = document.createElement('span');
+        status.className = 'chat-subagent-status';
+        status.textContent = 'Running...';
+        row.appendChild(name);
+        row.appendChild(status);
+        item.appendChild(row);
+
+        const children = document.createElement('div');
+        children.className = 'chat-subagent-children';
+        item.appendChild(children);
+
+        const parentContainer = payload.parentCallId
+            ? this.subagentCallElements.get(payload.parentCallId)?.querySelector('.chat-subagent-children')
+            : null;
+        const hostContainer = parentContainer instanceof HTMLElement
+            ? parentContainer
+            : this.ensureSpinnerSubagentList(spinner);
+        hostContainer.appendChild(item);
+
+        this.subagentCallElements.set(payload.callId, item);
+        this.subagentCallSpinnerKeys.set(payload.callId, spinnerKey);
+        const callIdsForSpinner = this.spinnerSubagentCallIds.get(spinnerKey) ?? new Set<string>();
+        callIdsForSpinner.add(payload.callId);
+        this.spinnerSubagentCallIds.set(spinnerKey, callIdsForSpinner);
+        return item;
+    }
+
+    setSubagentCallItemStatus(
+        callId: string,
+        statusClass: 'running' | 'completed' | 'failed',
+        message?: string
+    ): void {
+        const item = this.subagentCallElements.get(callId);
+        if (!item) return;
+        item.classList.remove('running', 'completed', 'failed');
+        item.classList.add(statusClass);
+        const statusEl = item.querySelector('.chat-subagent-status');
+        if (!(statusEl instanceof HTMLElement)) return;
+        statusEl.classList.remove('running-indicator', 'done-indicator');
+        statusEl.replaceChildren();
+
+        if (statusClass === 'running') {
+            statusEl.classList.add('running-indicator');
+            statusEl.setAttribute('aria-label', 'Running');
+            const spinner = document.createElement('span');
+            spinner.className = 'chat-spinner chat-spinner-inline';
+            spinner.setAttribute('aria-hidden', 'true');
+            spinner.innerHTML = '<span></span><span></span><span></span>';
+            statusEl.appendChild(spinner);
+            return;
+        }
+        if (statusClass === 'completed') {
+            statusEl.classList.add('done-indicator');
+            statusEl.removeAttribute('aria-label');
+            statusEl.textContent = '✓';
+            return;
+        }
+        statusEl.removeAttribute('aria-label');
+        statusEl.textContent = message && message.trim() ? message.trim() : 'Failed';
+    }
+
+    handleSubagentLogEntry(entry: any, options: { createSpinnerIfMissing?: boolean } = {}): void {
+        const payload = this.parseSubagentRuntimeLogPayload(entry);
+        if (!payload) return;
+
+        const spinnerKey =
+            payload.parentNodeId ||
+            (typeof entry?.nodeId === 'string' ? entry.nodeId : GENERIC_AGENT_SPINNER_KEY);
+        const createSpinnerIfMissing = options.createSpinnerIfMissing ?? true;
+
+        if (!this.pendingAgentMessages.has(spinnerKey) && createSpinnerIfMissing) {
+            this.showAgentSpinner(this.getAgentNameForNode(spinnerKey), spinnerKey);
+        }
+        if (!this.pendingAgentMessages.has(spinnerKey)) {
+            return;
+        }
+
+        if (entry.type === 'subagent_call_start') {
+            const item = this.ensureSubagentCallItem(spinnerKey, payload);
+            if (item) {
+                this.setSubagentCallItemStatus(payload.callId, 'running');
+            }
+            return;
+        }
+
+        const mappedStatus = entry.type === 'subagent_call_error' ? 'failed' : 'completed';
+        this.setSubagentCallItemStatus(payload.callId, mappedStatus, payload.message);
+    }
+
     onLogEntry(entry: any) {
         const type = entry.type || '';
         if (type === 'step_start') {
@@ -2714,6 +2916,8 @@ export class WorkflowEditor {
                 this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
                 this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId), entry.nodeId);
             }
+        } else if (this.isSubagentCallLogType(type)) {
+            this.handleSubagentLogEntry(entry);
         } else if (type === 'llm_response') {
             this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
             this.hideAgentSpinner(entry.nodeId);
@@ -2734,12 +2938,14 @@ export class WorkflowEditor {
         this.chatMessages.innerHTML = '';
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
         this.lastLlmResponseContent = null;
         const initialPromptFromLogs = this.getInitialPromptFromLogs(logs);
         if (initialPromptFromLogs) {
             this.appendChatMessage(initialPromptFromLogs, 'user');
         }
         const activeAgentNodeCounts = new Map<string, number>();
+        const subagentEntries: any[] = [];
         logs.forEach((entry: any) => {
             const entryNodeId = typeof entry?.nodeId === 'string' ? entry.nodeId : null;
             const entryNode = entryNodeId ? this.getRunNodeById(entryNodeId) : undefined;
@@ -2758,6 +2964,11 @@ export class WorkflowEditor {
                 } else {
                     activeAgentNodeCounts.delete(entryNodeId);
                 }
+            }
+
+            if (this.isSubagentCallLogType(entry.type || '')) {
+                subagentEntries.push(entry);
+                return;
             }
 
             if (this.isApprovalInputLog(entry)) {
@@ -2781,6 +2992,8 @@ export class WorkflowEditor {
                 this.showAgentSpinner(this.getAgentNameForNode(nodeId), nodeId);
             }
         });
+
+        subagentEntries.forEach((entry) => this.handleSubagentLogEntry(entry, { createSpinnerIfMissing: false }));
     }
 
     async runWorkflow() {

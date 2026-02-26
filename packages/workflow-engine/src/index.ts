@@ -40,8 +40,29 @@ export interface AgentInvocation {
   subagents?: AgentSubagentInvocation[];
 }
 
+export type AgentRuntimeEventType =
+  | 'subagent_call_start'
+  | 'subagent_call_end'
+  | 'subagent_call_error';
+
+export interface AgentRuntimeEvent {
+  type: AgentRuntimeEventType;
+  parentNodeId: string;
+  subagentNodeId: string;
+  subagentName: string;
+  callId: string;
+  parentCallId?: string;
+  depth: number;
+  message?: string;
+}
+
+export interface AgentRespondOptions {
+  parentNodeId?: string;
+  onRuntimeEvent?: (event: AgentRuntimeEvent) => void;
+}
+
 export interface WorkflowLLM {
-  respond: (input: AgentInvocation) => Promise<string>;
+  respond: (input: AgentInvocation, options?: AgentRespondOptions) => Promise<string>;
 }
 
 export interface WorkflowEngineInitOptions {
@@ -264,6 +285,14 @@ export class WorkflowEngine {
     if (this.onLog) {
       this.onLog(entry);
     }
+  }
+
+  private logAgentRuntimeEvent(fallbackNodeId: string, event: AgentRuntimeEvent): void {
+    const resolvedNodeId =
+      typeof event.parentNodeId === 'string' && event.parentNodeId.trim()
+        ? event.parentNodeId
+        : fallbackNodeId;
+    this.log(resolvedNodeId, event.type, JSON.stringify(event));
   }
 
   private async processNode(
@@ -535,7 +564,10 @@ export class WorkflowEngine {
     this.log(node.id, 'start_prompt', invocation.userContent || '');
 
     try {
-      const responseText = await this.llm.respond(invocation);
+      const responseText = await this.llm.respond(invocation, {
+        parentNodeId: node.id,
+        onRuntimeEvent: (event) => this.logAgentRuntimeEvent(node.id, event)
+      });
       this.log(node.id, 'llm_response', responseText);
       return responseText;
     } catch (error) {
