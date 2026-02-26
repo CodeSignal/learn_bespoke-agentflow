@@ -23,6 +23,7 @@ data/
 - **Visual Editor** – Canvas, floating palette, zoom controls, and inline node forms for prompts, branching rules, and approval copy.
 - **Run Console** – Chat-style panel that renders agent responses progressively as they arrive via SSE, with per-agent labels, spinner states, and approval requests.
 - **Workflow Engine** – Handles graph traversal, approvals, and LLM invocation (OpenAI Agents SDK).
+- **Subagent Tools** – Agent nodes can expose connected agent nodes as nested subagent tools; these links are tool-delegation edges, not workflow execution edges.
 - **Persistent Audit Trail** – Every run writes `data/runs/run_<timestamp>.json` containing the workflow graph plus raw execution logs, independent of what the UI chooses to display.
 
 ## Getting Started
@@ -65,6 +66,7 @@ Workflow run preflight rules and blocking conditions are documented in `apps/web
 ## Architecture Notes
 
 - **`@agentic/workflow-engine`**: Pure TypeScript package that normalizes graphs, manages state, pauses for approvals, and calls an injected `WorkflowLLM`. It now exposes `getGraph()` so callers can persist what actually ran.
+- **Subagent hierarchy**: Subagent connectors form an acyclic parent/child graph among Agent nodes (`A -> B -> C` allowed, `A -> B -> A` blocked). Subagent targets are tool-only and excluded from execution-flow traversal.
 - **Server (`apps/server`)**: Five Express routes. `/api/run-stream` is the primary execution path — streams each `WorkflowLogEntry` as an SSE event so the UI renders progressively. `/api/run` is the same execution as a single JSON response. `/api/resume` continues paused approval workflows. `/api/config` serves `.config/config.json` (provider/model definitions). `/api/default-workflow` serves `.config/default-workflow.json` if present.
 - **Web (`apps/web`)**: Vite SPA using the CodeSignal design system. Core UI logic lives in `src/app/workflow-editor.ts`; shared helpers (help modal, API client, etc.) live under `src/`.
 - **Shared contracts**: `packages/types` keeps node shapes, graph schemas, log formats, and run-record definitions in sync across the stack.

@@ -44,6 +44,8 @@ npm run build:packages       # Build only shared packages (types + engine)
 
 **Agent backend:** Server agent execution is implemented through OpenAI Agents SDK (`apps/server/src/services/openai-agents-llm.ts`). Agent runs are capped with `maxTurns: 20` to bound loop iterations.
 
+**Subagent hierarchy:** Agent nodes may expose other agent nodes as tools through subagent links. These links are not execution-flow edges. The subagent graph must be acyclic, and subagent targets are tool-only (no regular execution edges).
+
 **Build dependency chain:** `packages/types` → `packages/workflow-engine` → `apps/server` / `apps/web`. Always run `build:packages` before typechecking or building apps.
 
 ## Design System (Git Submodule)

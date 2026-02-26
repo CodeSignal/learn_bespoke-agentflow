@@ -149,6 +149,27 @@ body {
     display: flex;
 }
 
+.canvas-validation-message {
+    position: absolute;
+    top: calc(var(--UI-Spacing-spacing-ms) + 52px);
+    right: var(--UI-Spacing-spacing-ms);
+    max-width: min(440px, 60vw);
+    padding: var(--UI-Spacing-spacing-xxs) var(--UI-Spacing-spacing-xs);
+    border: 1px solid var(--Colors-Alert-Error-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    background: color-mix(in srgb, var(--Colors-Alert-Error-Default) 10%, white);
+    color: var(--Colors-Alert-Error-Default);
+    box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+    font-size: var(--Fonts-Body-Default-xs);
+    line-height: 1.35;
+    z-index: 5;
+    display: none;
+}
+
+.canvas-validation-message.visible {
+    display: block;
+}
+
 .canvas-clear {
     position: absolute;
     bottom: var(--UI-Spacing-spacing-ms);
@@ -239,6 +260,10 @@ path.connection-line {
     pointer-events: none;
 }
 
+path.connection-line.connection-line-subagent {
+    stroke: var(--Colors-Alert-Success-Medium);
+}
+
 path.connection-line.editable {
     pointer-events: stroke;
     cursor: grab;
@@ -250,6 +275,10 @@ path.connection-line.editable:hover {
     stroke-width: 4px;
 }
 
+path.connection-line.editable.connection-line-subagent:hover {
+    stroke: color-mix(in srgb, var(--Colors-Alert-Success-Medium) 80%, black);
+}
+
 path.connection-line.editable:active {
     cursor: grabbing;
 }
@@ -259,6 +288,10 @@ path.connection-line.reconnecting {
     stroke-width: 3px;
     stroke-dasharray: 5,5;
     pointer-events: none;
+}
+
+path.connection-line.reconnecting.connection-line-subagent {
+    stroke: var(--Colors-Alert-Success-Medium);
 }
 
 path.connection-line.active {
@@ -289,6 +322,15 @@ path.connection-line.active {
     border-color: var(--Colors-Box-Stroke-Selected-Emphasis);
     box-shadow: 0 0 0 3px var(--Colors-Box-Focus);
     z-index: 10;
+}
+
+.node.subagent-target-node {
+    border-color: var(--Colors-Alert-Success-Medium);
+}
+
+.node.subagent-target-node.selected {
+    border-color: var(--Colors-Alert-Success-Medium);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--Colors-Alert-Success-Medium) 25%, white);
 }
 
 /* Expanded Mode (In-Node Editing) */
@@ -503,6 +545,13 @@ path.connection-line.active {
     line-height: 1;
 }
 .port-condition-fallback { border-color: var(--Colors-Alert-Error-Default); }
+.port-subagent {
+    top: auto;
+    bottom: -6px;
+    left: calc(50% - 6px);
+    right: auto;
+    border-color: var(--Colors-Alert-Success-Medium);
+}
 
 /* Form Styles inside Node */
 .node-form label {
@@ -650,6 +699,26 @@ path.connection-line.active {
     background: color-mix(in srgb, var(--Colors-Primary-Medium) 24%, transparent);
     color: inherit;
     -webkit-text-fill-color: inherit;
+}
+
+.prompt-highlight-wrapper.is-subagent-locked {
+    background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Top) 88%, transparent);
+}
+
+.prompt-highlight-wrapper.is-subagent-locked .prompt-highlight-backdrop {
+    display: none;
+}
+
+.prompt-highlight-wrapper.is-subagent-locked .prompt-highlight-input {
+    color: var(--Colors-Input-Text-Placeholder);
+    -webkit-text-fill-color: var(--Colors-Input-Text-Placeholder);
+    cursor: not-allowed;
+}
+
+.subagent-input-lock-note {
+    margin-top: var(--UI-Spacing-spacing-xxs);
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-sm);
 }
 
 .ds-select {

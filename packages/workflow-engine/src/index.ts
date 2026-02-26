@@ -16,8 +16,20 @@ import type {
 export type AgentToolsConfig = {
   /** Enable web search capability for the agent */
   web_search?: boolean;
+  /** Enable subagent delegation capability for the agent */
+  subagents?: boolean;
   // Future tools can be added here, e.g.: calculator?: boolean; email?: boolean;
 };
+
+export interface AgentSubagentInvocation {
+  nodeId: string;
+  agentName: string;
+  systemPrompt: string;
+  model: string;
+  reasoningEffort?: string;
+  tools?: AgentToolsConfig;
+  subagents?: AgentSubagentInvocation[];
+}
 
 export interface AgentInvocation {
   systemPrompt: string;
@@ -25,6 +37,7 @@ export interface AgentInvocation {
   model: string;
   reasoningEffort?: string;
   tools?: AgentToolsConfig;
+  subagents?: AgentSubagentInvocation[];
 }
 
 export interface WorkflowLLM {
@@ -52,6 +65,7 @@ export interface WorkflowEngineInitOptions {
 
 const DEFAULT_REASONING = 'low';
 const IF_CONDITION_HANDLE_PREFIX = 'condition-';
+const SUBAGENT_HANDLE = 'subagent';
 const APPROVAL_CONTEXTS_STATE_KEY = '__approval_contexts__';
 const PENDING_APPROVAL_QUEUE_STATE_KEY = '__pending_approval_queue__';
 const DEFERRED_NODE_QUEUE_STATE_KEY = '__deferred_node_queue__';
@@ -311,7 +325,7 @@ export class WorkflowEngine {
       }
       this.state[node.id] = output;
 
-      const nextConnections = this.graph.connections.filter((c) => c.source === node.id);
+      const nextConnections = this.getOutgoingExecutionConnections(node);
       await this.processConnections(node.id, nextConnections, output, writeSharedPreviousOutput);
       return output;
     } catch (error) {
@@ -506,13 +520,16 @@ export class WorkflowEngine {
       userContent = lastOutputStr;
     }
 
+    this.validateSubagentGraphConstraints();
+    const subagents = this.buildSubagentInvocations(node.id, new Set<string>([node.id]));
     const invocation: AgentInvocation = {
       systemPrompt:
         (node.data?.systemPrompt as string) || 'You are a helpful assistant.',
       userContent,
       model: (node.data?.model as string) || 'gpt-5',
       reasoningEffort: (node.data?.reasoningEffort as string) || DEFAULT_REASONING,
-      tools: node.data?.tools as AgentToolsConfig
+      tools: node.data?.tools as AgentToolsConfig,
+      subagents: subagents.length > 0 ? subagents : undefined
     };
 
     this.log(node.id, 'start_prompt', invocation.userContent || '');
@@ -526,6 +543,151 @@ export class WorkflowEngine {
       this.log(node.id, 'llm_error', message);
       throw error instanceof Error ? error : new Error(message);
     }
+  }
+
+  private isSubagentConnection(connection: WorkflowConnection): boolean {
+    return connection.sourceHandle === SUBAGENT_HANDLE;
+  }
+
+  private getOutgoingExecutionConnections(node: WorkflowNode): WorkflowConnection[] {
+    const outgoing = this.graph.connections.filter((c) => c.source === node.id);
+    return outgoing.filter((connection) => !this.isSubagentConnection(connection));
+  }
+
+  private getSubagentConnections(): WorkflowConnection[] {
+    return this.graph.connections.filter((connection) => this.isSubagentConnection(connection));
+  }
+
+  private validateSubagentGraphConstraints(): void {
+    const subagentConnections = this.getSubagentConnections();
+    if (subagentConnections.length === 0) {
+      return;
+    }
+
+    const nodesById = new Map(this.graph.nodes.map((node) => [node.id, node]));
+    const incomingSubagentCounts = new Map<string, number>();
+    const subagentAdjacency = new Map<string, string[]>();
+
+    for (const connection of subagentConnections) {
+      const sourceNode = nodesById.get(connection.source);
+      const targetNode = nodesById.get(connection.target);
+
+      if (!sourceNode || sourceNode.type !== 'agent') {
+        throw new Error(`Subagent source "${connection.source}" must be an agent node.`);
+      }
+      if (!targetNode || targetNode.type !== 'agent') {
+        throw new Error(`Subagent target "${connection.target}" must be an agent node.`);
+      }
+
+      const sourceTools = sourceNode.data?.tools as AgentToolsConfig | undefined;
+      if (!sourceTools?.subagents) {
+        throw new Error(`Agent "${sourceNode.id}" uses subagent links but Subagents tool is disabled.`);
+      }
+
+      if (connection.targetHandle && connection.targetHandle !== 'input') {
+        throw new Error(`Subagent link "${sourceNode.id}" -> "${targetNode.id}" must connect to input handle.`);
+      }
+
+      if (sourceNode.id === targetNode.id) {
+        throw new Error(`Agent "${sourceNode.id}" cannot be a subagent of itself.`);
+      }
+
+      incomingSubagentCounts.set(
+        targetNode.id,
+        (incomingSubagentCounts.get(targetNode.id) ?? 0) + 1
+      );
+      if ((incomingSubagentCounts.get(targetNode.id) ?? 0) > 1) {
+        throw new Error(`Agent "${targetNode.id}" cannot belong to more than one parent subagent.`);
+      }
+
+      const adjacent = subagentAdjacency.get(sourceNode.id) ?? [];
+      adjacent.push(targetNode.id);
+      subagentAdjacency.set(sourceNode.id, adjacent);
+    }
+
+    const subagentTargetIds = new Set(incomingSubagentCounts.keys());
+    for (const targetId of subagentTargetIds) {
+      const hasExecutionConnections = this.graph.connections.some((connection) => {
+        if (this.isSubagentConnection(connection)) {
+          return false;
+        }
+        return connection.source === targetId || connection.target === targetId;
+      });
+
+      if (hasExecutionConnections) {
+        throw new Error(
+          `Agent "${targetId}" is configured as subagent and cannot participate in workflow execution edges.`
+        );
+      }
+    }
+
+    const visitState = new Map<string, 'visiting' | 'visited'>();
+    const dfs = (nodeId: string, path: string[]): void => {
+      const state = visitState.get(nodeId);
+      if (state === 'visiting') {
+        const startIndex = path.indexOf(nodeId);
+        const cyclePath = [...path.slice(startIndex), nodeId].join(' -> ');
+        throw new Error(`Subagent cycle detected: ${cyclePath}`);
+      }
+      if (state === 'visited') {
+        return;
+      }
+
+      visitState.set(nodeId, 'visiting');
+      const neighbors = subagentAdjacency.get(nodeId) ?? [];
+      for (const neighbor of neighbors) {
+        dfs(neighbor, [...path, neighbor]);
+      }
+      visitState.set(nodeId, 'visited');
+    };
+
+    for (const nodeId of subagentAdjacency.keys()) {
+      dfs(nodeId, [nodeId]);
+    }
+  }
+
+  private buildSubagentInvocations(
+    parentNodeId: string,
+    ancestry: Set<string>
+  ): AgentSubagentInvocation[] {
+    const subagentConnections = this.graph.connections.filter(
+      (connection) =>
+        connection.source === parentNodeId &&
+        this.isSubagentConnection(connection)
+    );
+
+    if (subagentConnections.length === 0) {
+      return [];
+    }
+
+    const results: AgentSubagentInvocation[] = [];
+
+    for (const connection of subagentConnections) {
+      const targetNode = this.graph.nodes.find((candidate) => candidate.id === connection.target);
+      if (!targetNode || targetNode.type !== 'agent') {
+        throw new Error(`Subagent target "${connection.target}" must be an agent node.`);
+      }
+
+      if (ancestry.has(targetNode.id)) {
+        throw new Error(`Subagent cycle detected at "${targetNode.id}".`);
+      }
+
+      const nextAncestry = new Set(ancestry);
+      nextAncestry.add(targetNode.id);
+      const nestedSubagents = this.buildSubagentInvocations(targetNode.id, nextAncestry);
+
+      results.push({
+        nodeId: targetNode.id,
+        agentName: (targetNode.data?.agentName as string) || 'Agent',
+        systemPrompt: (targetNode.data?.systemPrompt as string) || 'You are a helpful assistant.',
+        model: (targetNode.data?.model as string) || 'gpt-5',
+        reasoningEffort: (targetNode.data?.reasoningEffort as string) || DEFAULT_REASONING,
+        tools: targetNode.data?.tools as AgentToolsConfig,
+        subagents: nestedSubagents.length > 0 ? nestedSubagents : undefined
+      });
+    }
+
+    return results;
   }
 
   private findLastNonApprovalOutput(): string | null {
