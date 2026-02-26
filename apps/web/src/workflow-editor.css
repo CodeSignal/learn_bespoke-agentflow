@@ -552,15 +552,15 @@ path.connection-line.active {
 .port-condition-fallback { border-color: var(--Colors-Alert-Error-Default); }
 .port-subagent {
     top: auto;
-    bottom: -6px;
-    left: calc(50% - 6px);
+    bottom: calc(-1 * var(--UI-Spacing-spacing-xs));
+    left: calc(50% - var(--UI-Spacing-spacing-xs));
     right: auto;
     border-color: var(--Colors-Alert-Success-Medium);
 }
 
 .port-subagent-target {
-    top: -7px;
-    left: calc(50% - 6px);
+    top: calc(-1 * (var(--UI-Spacing-spacing-xs) + (var(--UI-Spacing-spacing-min) / 2)));
+    left: calc(50% - var(--UI-Spacing-spacing-xs));
     right: auto;
     border-color: var(--Colors-Alert-Success-Medium);
     opacity: 0;
@@ -935,7 +935,7 @@ path.connection-line.active {
     align-items: center;
     justify-content: space-between;
     gap: var(--UI-Spacing-spacing-s);
-    min-height: 22px;
+    min-height: calc(var(--UI-Spacing-spacing-m) + var(--UI-Spacing-spacing-xxs));
 }
 
 .chat-subagent-main {
@@ -949,9 +949,9 @@ path.connection-line.active {
     border: 0;
     background: transparent;
     color: var(--Colors-Text-Body-Medium);
-    width: 14px;
-    min-width: 14px;
-    height: 14px;
+    width: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
+    min-width: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
+    height: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
     padding: 0;
     cursor: pointer;
     line-height: 1;
@@ -977,26 +977,26 @@ path.connection-line.active {
 .chat-subagent-status {
     color: var(--Colors-Text-Body-Medium);
     font-size: var(--Fonts-Body-Default-xxs);
-    padding: 1px var(--UI-Spacing-spacing-xs);
+    padding: calc(var(--UI-Spacing-spacing-min) / 2) var(--UI-Spacing-spacing-xs);
     border-radius: var(--UI-Radius-radius-mxl);
     background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Top) 86%, transparent);
 }
 
 .chat-subagent-status.running-indicator,
 .chat-subagent-status.done-indicator {
-    min-width: 22px;
+    min-width: calc(var(--UI-Spacing-spacing-m) + var(--UI-Spacing-spacing-xxs));
     display: inline-flex;
     align-items: center;
     justify-content: center;
 }
 
 .chat-subagent-status.running-indicator .chat-spinner.chat-spinner-inline {
-    gap: 2px;
+    gap: var(--UI-Spacing-spacing-min);
 }
 
 .chat-subagent-status.running-indicator .chat-spinner.chat-spinner-inline span {
-    width: 5px;
-    height: 5px;
+    width: calc((var(--UI-Spacing-spacing-xs) + var(--UI-Spacing-spacing-xxs)) / 2);
+    height: calc((var(--UI-Spacing-spacing-xs) + var(--UI-Spacing-spacing-xxs)) / 2);
 }
 
 .chat-subagent-item.completed > .chat-subagent-row > .chat-subagent-status {

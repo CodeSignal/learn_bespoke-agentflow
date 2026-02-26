@@ -817,7 +817,7 @@ export class WorkflowEditor {
 
     applyPendingConnection(nextConnection: WorkflowConnection): boolean {
         const duplicateExists = this.connections.some(
-            (conn: any) =>
+            (conn: WorkflowConnection) =>
                 conn.source === nextConnection.source &&
                 conn.target === nextConnection.target &&
                 conn.sourceHandle === nextConnection.sourceHandle &&
