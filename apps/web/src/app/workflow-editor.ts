@@ -23,9 +23,11 @@ const SUBAGENT_HANDLE = 'subagent';
 const SUBAGENT_TARGET_HANDLE = 'subagent-target';
 const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
-const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
-const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
 const SUBAGENT_PORT_MIN_TOP = 42;
+const DEFAULT_HEADER_CENTER_Y = 24;
+const DEFAULT_SECONDARY_CENTER_Y = 81;
+const PORT_RADIUS = 6;
+const AGGREGATE_PORT_RADIUS = 8;
 const PREVIOUS_OUTPUT_TEMPLATE = '{{PREVIOUS_OUTPUT}}';
 const GENERIC_AGENT_SPINNER_KEY = '__generic_agent_spinner__';
 const IF_CONDITION_OPERATORS = [
@@ -650,7 +652,7 @@ export class WorkflowEditor {
         }
         return {
             x: targetNode.x,
-            y: targetNode.y + 24
+            y: targetNode.y + this.getNodeHeaderCenterYOffset(targetNode)
         };
     }
 
@@ -852,7 +854,7 @@ export class WorkflowEditor {
 
     getIfConditionPortTop(node: EditorNode, index: number): number {
         if (node.data?.collapsed) {
-            return this.getIfPortTop(index);
+            return this.getNodeHeaderPortTop(node);
         }
 
         const nodeEl = document.getElementById(node.id);
@@ -872,7 +874,7 @@ export class WorkflowEditor {
     getIfFallbackPortTop(node: EditorNode): number {
         const conditions = this.getIfConditions(node);
         if (node.data?.collapsed) {
-            return this.getIfPortTop(conditions.length);
+            return this.getNodeSecondaryPortTop(node);
         }
 
         const nodeEl = document.getElementById(node.id);
@@ -959,11 +961,11 @@ export class WorkflowEditor {
         if (node.type === 'if') {
             if (this.shouldAggregateCollapsedIfPorts(node)) {
                 if (sourceHandle === IF_FALLBACK_HANDLE) {
-                    return IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP + 6;
+                    return this.getNodeSecondaryCenterYOffset(node);
                 }
                 const conditionIndex = this.getIfConditionIndexFromHandle(sourceHandle);
                 if (conditionIndex !== null) {
-                    return IF_COLLAPSED_MULTI_CONDITION_PORT_TOP + 6;
+                    return this.getNodeHeaderCenterYOffset(node);
                 }
             }
             if (sourceHandle === IF_FALLBACK_HANDLE) {
@@ -975,9 +977,35 @@ export class WorkflowEditor {
             }
         }
 
-        if (sourceHandle === 'approve') return 51;
-        if (sourceHandle === 'reject') return 81;
-        return 24;
+        if (sourceHandle === 'approve') return this.getNodeHeaderCenterYOffset(node);
+        if (sourceHandle === 'reject') return this.getNodeSecondaryCenterYOffset(node);
+        return this.getNodeHeaderCenterYOffset(node);
+    }
+
+    getNodeHeaderCenterYOffset(node: EditorNode): number {
+        const nodeEl = document.getElementById(node.id);
+        const headerEl = nodeEl?.querySelector('.node-header');
+        if (!(headerEl instanceof HTMLElement)) return DEFAULT_HEADER_CENTER_Y;
+        return Math.round(headerEl.offsetTop + (headerEl.offsetHeight / 2));
+    }
+
+    getNodeHeaderPortTop(node: EditorNode): number {
+        return this.getNodeHeaderCenterYOffset(node) - PORT_RADIUS;
+    }
+
+    getNodeSecondaryCenterYOffset(node: EditorNode): number {
+        const nodeEl = document.getElementById(node.id);
+        const headerEl = nodeEl?.querySelector('.node-header');
+        if (!(nodeEl instanceof HTMLElement) || !(headerEl instanceof HTMLElement)) {
+            return DEFAULT_SECONDARY_CENTER_Y;
+        }
+        const bodyTop = headerEl.offsetTop + headerEl.offsetHeight;
+        const bodyHeight = Math.max(nodeEl.offsetHeight - bodyTop, PORT_RADIUS * 2);
+        return Math.round(bodyTop + (bodyHeight / 2));
+    }
+
+    getNodeSecondaryPortTop(node: EditorNode): number {
+        return this.getNodeSecondaryCenterYOffset(node) - PORT_RADIUS;
     }
 
     setWorkflowState(state: WorkflowState): void {
@@ -2285,7 +2313,7 @@ export class WorkflowEditor {
         }
 
         if (node.type !== 'start') {
-            const portIn = this.createPort(node.id, 'input', 'port-in');
+            const portIn = this.createPort(node.id, 'input', 'port-in', '', this.getNodeHeaderPortTop(node));
             el.appendChild(portIn);
         }
 
@@ -2299,7 +2327,7 @@ export class WorkflowEditor {
                         this.getIfConditionHandle(0),
                         'port-out port-condition port-condition-aggregate',
                         title,
-                        IF_COLLAPSED_MULTI_CONDITION_PORT_TOP,
+                        this.getNodeHeaderCenterYOffset(node) - AGGREGATE_PORT_RADIUS,
                         false
                     );
                     aggregateConditionPort.textContent = String(conditions.length);
@@ -2311,7 +2339,7 @@ export class WorkflowEditor {
                             IF_FALLBACK_HANDLE,
                             'port-out port-condition-fallback',
                             'False fallback',
-                            IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP
+                            this.getNodeSecondaryPortTop(node)
                         )
                     );
                 } else {
@@ -2340,7 +2368,7 @@ export class WorkflowEditor {
                     );
                 }
             } else if (node.type === 'agent') {
-                el.appendChild(this.createPort(node.id, 'output', 'port-out'));
+                el.appendChild(this.createPort(node.id, 'output', 'port-out', '', this.getNodeHeaderPortTop(node)));
                 if (node.data?.tools?.subagents) {
                     el.appendChild(
                         this.createPort(
@@ -2352,10 +2380,26 @@ export class WorkflowEditor {
                     );
                 }
             } else if (node.type === 'approval') {
-                el.appendChild(this.createPort(node.id, 'approve', 'port-out port-true', 'Approve'));
-                el.appendChild(this.createPort(node.id, 'reject', 'port-out port-false', 'Reject'));
+                el.appendChild(
+                    this.createPort(
+                        node.id,
+                        'approve',
+                        'port-out port-true',
+                        'Approve',
+                        this.getNodeHeaderPortTop(node)
+                    )
+                );
+                el.appendChild(
+                    this.createPort(
+                        node.id,
+                        'reject',
+                        'port-out port-false',
+                        'Reject',
+                        this.getNodeSecondaryPortTop(node)
+                    )
+                );
             } else {
-                el.appendChild(this.createPort(node.id, 'output', 'port-out'));
+                el.appendChild(this.createPort(node.id, 'output', 'port-out', '', this.getNodeHeaderPortTop(node)));
             }
         }
     }
