@@ -463,7 +463,7 @@ export class WorkflowEditor {
         if (this.pendingLayoutSyncFrame !== null) return;
         this.pendingLayoutSyncFrame = window.requestAnimationFrame(() => {
             this.pendingLayoutSyncFrame = null;
-            this.renderConnections();
+            this.renderConnections(false);
         });
     }
 
@@ -2417,7 +2417,7 @@ export class WorkflowEditor {
         this.connectionsLayer.appendChild(this.tempConnection);
     }
 
-    renderConnections() {
+    renderConnections(refreshSelectedForm = true) {
         if (!this.connectionsLayer) return;
         this.enforceSubagentTargetInputLocks();
         this.updateSubagentTargetNodeStyles();
@@ -2450,7 +2450,9 @@ export class WorkflowEditor {
             path.addEventListener('mousedown', (e: any) => this.onConnectionLineMouseDown(e, conn, index));
             connectionsLayer.appendChild(path);
         });
-        this.refreshSelectedNodeForm();
+        if (refreshSelectedForm) {
+            this.refreshSelectedNodeForm();
+        }
         this.scheduleSave();
     }
 
