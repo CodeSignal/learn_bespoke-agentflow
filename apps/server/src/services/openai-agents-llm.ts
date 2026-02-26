@@ -91,6 +91,7 @@ type AgentBuildRegistry = {
 let sdkModulePromise: Promise<AgentsSdkModule> | null = null;
 const MAX_AGENT_TURNS = 20;
 const MAX_SUBAGENT_PROMPT_CHARS_IN_DESCRIPTION = 280;
+const MAX_NESTED_SUBAGENT_NAMES_IN_DESCRIPTION = 4;
 
 async function loadAgentsSdk(): Promise<AgentsSdkModule> {
   if (!sdkModulePromise) {
@@ -176,6 +177,22 @@ function summarizeSystemPrompt(systemPrompt: string): string {
   return `${normalized.slice(0, MAX_SUBAGENT_PROMPT_CHARS_IN_DESCRIPTION).trimEnd()}…`;
 }
 
+function summarizeNestedSubagents(subagents: AgentSubagentInvocation[] | undefined): string {
+  const nested = subagents ?? [];
+  if (nested.length === 0) {
+    return 'None';
+  }
+
+  const names = nested.map((entry) => (entry.agentName || 'Agent').trim() || 'Agent');
+  if (names.length <= MAX_NESTED_SUBAGENT_NAMES_IN_DESCRIPTION) {
+    return names.join(', ');
+  }
+
+  const visibleNames = names.slice(0, MAX_NESTED_SUBAGENT_NAMES_IN_DESCRIPTION).join(', ');
+  const remaining = names.length - MAX_NESTED_SUBAGENT_NAMES_IN_DESCRIPTION;
+  return `${visibleNames}, +${remaining} more`;
+}
+
 function buildSubagentToolDescription(
   subagentName: string,
   subagent: AgentSubagentInvocation
@@ -183,7 +200,8 @@ function buildSubagentToolDescription(
   const toolLabels = getEnabledToolLabels(subagent.tools);
   const toolSummary = toolLabels.length > 0 ? toolLabels.join(', ') : 'None';
   const promptSummary = summarizeSystemPrompt(subagent.systemPrompt);
-  return `Delegates work to subagent ${subagentName}. System prompt: ${promptSummary} Available tools: ${toolSummary}.`;
+  const nestedSubagentSummary = summarizeNestedSubagents(subagent.subagents);
+  return `Delegates work to subagent ${subagentName}. System prompt: ${promptSummary} Available tools: ${toolSummary}. Nested subagents: ${nestedSubagentSummary}.`;
 }
 
 function buildSdkAgent(
