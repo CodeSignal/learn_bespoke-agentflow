@@ -2,11 +2,16 @@ import type { AgentInvocation, WorkflowLLM } from '@agentic/workflow-engine';
 
 type AgentsSdkModule = {
   Agent: new (config: Record<string, unknown>) => unknown;
-  run: (agent: unknown, input: string) => Promise<{ finalOutput?: unknown }>;
+  run: (
+    agent: unknown,
+    input: string,
+    options?: { maxTurns?: number }
+  ) => Promise<{ finalOutput?: unknown }>;
   webSearchTool: () => unknown;
 };
 
 let sdkModulePromise: Promise<AgentsSdkModule> | null = null;
+const MAX_AGENT_TURNS = 20;
 
 async function loadAgentsSdk(): Promise<AgentsSdkModule> {
   if (!sdkModulePromise) {
@@ -16,7 +21,7 @@ async function loadAgentsSdk(): Promise<AgentsSdkModule> {
       sdkModulePromise = null;
       const message = error instanceof Error ? error.message : String(error);
       throw new Error(
-        `OpenAI Agents SDK backend selected but '@openai/agents' is unavailable: ${message}`
+        `OpenAI Agents SDK is required but '@openai/agents' is unavailable: ${message}`
       );
     });
   }
@@ -66,7 +71,7 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
     }
 
     const agent = new sdk.Agent(agentConfig);
-    const result = await sdk.run(agent, invocation.userContent);
+    const result = await sdk.run(agent, invocation.userContent, { maxTurns: MAX_AGENT_TURNS });
     return toTextOutput(result.finalOutput);
   }
 }

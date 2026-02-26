@@ -23,7 +23,7 @@ This repository is an npm workspace monorepo:
 - Language: TypeScript across apps/packages, with `strict` mode enabled.
 - Use `import type` where applicable (`@typescript-eslint/consistent-type-imports` is enforced).
 - Keep unused parameters/locals prefixed with `_` to satisfy lint rules.
-- Match existing file naming patterns: kebab-case files (`openai-llm.ts`), PascalCase classes, UPPER_SNAKE_CASE constants.
+- Match existing file naming patterns: kebab-case files (`openai-agents-llm.ts`), PascalCase classes, UPPER_SNAKE_CASE constants.
 - Follow existing indentation/style in each file; do not reformat unrelated code.
 
 ## Testing Guidelines
@@ -46,3 +46,4 @@ This repository is an npm workspace monorepo:
 - Treat `design-system/` (git submodule) as the source of truth for UI primitives.
 - Prefer existing tokens/components from the submodule before building custom UI in `apps/web`.
 - If a needed component does not exist in `design-system/`, pause and consult the user before adding a new component or introducing a non-design-system alternative.
+- In a brand new git worktree, initialize submodules before development (`git submodule update --init --recursive`), or the design-system assets will be missing.
