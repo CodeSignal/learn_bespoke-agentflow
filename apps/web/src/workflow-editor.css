@@ -558,6 +558,21 @@ path.connection-line.active {
     border-color: var(--Colors-Alert-Success-Medium);
 }
 
+.port-subagent-target {
+    top: -7px;
+    left: calc(50% - 6px);
+    right: auto;
+    border-color: var(--Colors-Alert-Success-Medium);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.node.subagent-candidate-node .port-subagent-target,
+.node.subagent-target-node .port-subagent-target {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 /* Form Styles inside Node */
 .node-form label {
     display: block;

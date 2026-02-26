@@ -20,6 +20,7 @@ const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
 const IF_CONDITION_HANDLE_PREFIX = 'condition-';
 const IF_FALLBACK_HANDLE = 'false';
 const SUBAGENT_HANDLE = 'subagent';
+const SUBAGENT_TARGET_HANDLE = 'subagent-target';
 const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
 const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
@@ -588,6 +589,37 @@ export class WorkflowEditor {
             targetIds.add(connection.target);
         });
         return targetIds;
+    }
+
+    canNodeBecomeSubagentTarget(
+        nodeId: string,
+        connections: WorkflowConnection[] = this.connections
+    ): boolean {
+        const targetNode = this.nodes.find((node) => node.id === nodeId);
+        if (!targetNode || targetNode.type !== 'agent') {
+            return false;
+        }
+
+        if (this.isSubagentTargetNode(nodeId, connections)) {
+            return false;
+        }
+
+        const candidateParents = this.nodes.filter(
+            (node) =>
+                node.type === 'agent' &&
+                node.id !== nodeId &&
+                Boolean(node.data?.tools?.subagents)
+        );
+
+        return candidateParents.some((parentNode) => {
+            const candidateConnection: WorkflowConnection = {
+                source: parentNode.id,
+                target: nodeId,
+                sourceHandle: SUBAGENT_HANDLE,
+                targetHandle: 'input'
+            };
+            return !this.getConnectionValidationError(candidateConnection, connections);
+        });
     }
 
     getSubagentPortTop(node: EditorNode): number {
@@ -1723,7 +1755,12 @@ export class WorkflowEditor {
         el.style.left = `${node.x}px`;
         el.style.top = `${node.y}px`;
         el.dataset.nodeId = node.id;
-        el.classList.toggle('subagent-target-node', node.type === 'agent' && this.isSubagentTargetNode(node.id));
+        const isSubagentTarget = node.type === 'agent' && this.isSubagentTargetNode(node.id);
+        const isSubagentCandidate =
+            node.type === 'agent' &&
+            (isSubagentTarget || this.canNodeBecomeSubagentTarget(node.id));
+        el.classList.toggle('subagent-target-node', isSubagentTarget);
+        el.classList.toggle('subagent-candidate-node', isSubagentCandidate);
 
         if (!node.data) node.data = {};
         if (node.data.collapsed === undefined) {
@@ -1854,7 +1891,6 @@ export class WorkflowEditor {
 
         // Render ports after mount so row-based offsets can be measured correctly.
         this.renderPorts(node, el);
-        el.addEventListener('mouseup', (e: MouseEvent) => this.onNodeMouseUp(e, node.id));
     }
 
     updateNodeHeader(node: any) {
@@ -2227,6 +2263,17 @@ export class WorkflowEditor {
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---
 
     renderPorts(node: any, el: any) {
+        if (node.type === 'agent') {
+            el.appendChild(
+                this.createPort(
+                    node.id,
+                    SUBAGENT_TARGET_HANDLE,
+                    'port-subagent-target',
+                    'Subagent target'
+                )
+            );
+        }
+
         if (node.type !== 'start') {
             const portIn = this.createPort(node.id, 'input', 'port-in');
             el.appendChild(portIn);
@@ -2323,7 +2370,7 @@ export class WorkflowEditor {
             port.setAttribute('aria-disabled', 'true');
         }
         
-        if (handle === 'input') {
+        if (handle === 'input' || handle === SUBAGENT_TARGET_HANDLE) {
             port.addEventListener('mouseup', (e: any) => this.onPortMouseUp(e, nodeId, handle));
         } else if (connectable) {
             port.addEventListener('mousedown', (e: any) => this.onPortMouseDown(e, nodeId, handle));
@@ -2389,7 +2436,30 @@ export class WorkflowEditor {
     onPortMouseUp(e: any, nodeId: any, handle: any) {
         e.stopPropagation();
         if (this.connectionStart && this.connectionStart.nodeId !== nodeId) {
-            this.applyConnectionToTarget(nodeId, handle);
+            if (this.connectionStart.handle === SUBAGENT_HANDLE && handle !== SUBAGENT_TARGET_HANDLE) {
+                this.setCanvasValidationMessage('Subagent links must connect to the top green subagent connector.');
+                if (this.reconnectingConnection !== null) {
+                    this.reconnectingConnection = null;
+                    this.renderConnections();
+                }
+                this.clearPendingConnectionDragState();
+                this.updateRunButton();
+                return;
+            }
+
+            if (this.connectionStart.handle !== SUBAGENT_HANDLE && handle === SUBAGENT_TARGET_HANDLE) {
+                this.setCanvasValidationMessage('Regular workflow links must connect to the side input connector.');
+                if (this.reconnectingConnection !== null) {
+                    this.reconnectingConnection = null;
+                    this.renderConnections();
+                }
+                this.clearPendingConnectionDragState();
+                this.updateRunButton();
+                return;
+            }
+
+            const targetHandle = handle === SUBAGENT_TARGET_HANDLE ? 'input' : handle;
+            this.applyConnectionToTarget(nodeId, targetHandle);
         } else if (this.reconnectingConnection !== null) {
             // Released without connecting to anything - connection already deleted, just clean up
             this.reconnectingConnection = null;
@@ -2399,23 +2469,6 @@ export class WorkflowEditor {
             this.tempConnection = null;
             this.updateRunButton();
         }
-    }
-
-    onNodeMouseUp(e: MouseEvent, nodeId: string): void {
-        if (!this.connectionStart || this.connectionStart.handle !== SUBAGENT_HANDLE) {
-            return;
-        }
-        if (this.connectionStart.nodeId === nodeId) {
-            return;
-        }
-
-        const targetNode = this.nodes.find((candidate) => candidate.id === nodeId);
-        if (!targetNode || targetNode.type !== 'agent') {
-            return;
-        }
-
-        e.stopPropagation();
-        this.applyConnectionToTarget(nodeId, 'input');
     }
 
     onConnectionLineMouseDown(e: any, connection: WorkflowConnection, connIndex: number) {
@@ -2504,6 +2557,10 @@ export class WorkflowEditor {
             if (!el) return;
             const isSubagentTarget = node.type === 'agent' && subagentTargets.has(node.id);
             el.classList.toggle('subagent-target-node', isSubagentTarget);
+            const isSubagentCandidate =
+                node.type === 'agent' &&
+                (isSubagentTarget || this.canNodeBecomeSubagentTarget(node.id, connections));
+            el.classList.toggle('subagent-candidate-node', isSubagentCandidate);
         });
     }
 
