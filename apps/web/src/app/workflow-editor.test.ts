@@ -21,13 +21,13 @@ describe('WorkflowEditor renderPorts', () => {
     };
 
     renderPorts.call(
-      { createPort },
+      { createPort, getNodeHeaderPortTop: () => 24 },
       { id: 'node_start', type: 'start' },
       element
     );
 
     expect(createPort).toHaveBeenCalledTimes(1);
-    expect(createPort).toHaveBeenCalledWith('node_start', 'output', 'port-out');
+    expect(createPort).toHaveBeenCalledWith('node_start', 'output', 'port-out', 'Next step', 24);
     expect(appended).toEqual([{ handle: 'output' }]);
   });
 });
