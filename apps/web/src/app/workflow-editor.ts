@@ -1003,6 +1003,15 @@ export class WorkflowEditor {
         }
     }
 
+    setCancelRunButtonHint(reason: string | null): void {
+        if (!this.cancelRunButton) return;
+        if (reason) {
+            this.cancelRunButton.setAttribute('data-tooltip', reason);
+        } else {
+            this.cancelRunButton.removeAttribute('data-tooltip');
+        }
+    }
+
     setCanvasValidationMessage(message: string | null): void {
         if (this.canvasValidationTimeout !== null) {
             clearTimeout(this.canvasValidationTimeout);
@@ -1138,6 +1147,7 @@ export class WorkflowEditor {
             const showCancel = this.workflowState === 'running';
             this.cancelRunButton.style.display = showCancel ? 'inline-flex' : 'none';
             this.cancelRunButton.disabled = !showCancel;
+            this.setCancelRunButtonHint(showCancel ? 'Cancel workflow' : null);
         }
 
         if (this.clearButton) {

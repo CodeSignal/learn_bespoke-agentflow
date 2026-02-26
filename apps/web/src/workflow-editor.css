@@ -1354,6 +1354,8 @@ path.connection-line.active {
     display: none;
     align-items: center;
     justify-content: center;
+    position: relative;
+    overflow: visible;
 }
 
 .run-button:disabled,
@@ -1382,6 +1384,7 @@ path.connection-line.active {
     text-align: left;
     z-index: 30;
     box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+    pointer-events: none;
 }
 
 .run-button:disabled[data-disabled-hint]:hover::before,
@@ -1395,6 +1398,44 @@ path.connection-line.active {
     border-right: 6px solid transparent;
     border-top: 6px solid var(--Colors-Backgrounds-Main-Top);
     z-index: 31;
+    pointer-events: none;
+}
+
+.cancel-run-button[data-tooltip]:hover::after,
+.cancel-run-button[data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--UI-Spacing-spacing-s));
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: min(320px, calc(100vw - 32px));
+    padding: var(--UI-Spacing-spacing-s) var(--UI-Spacing-spacing-ms);
+    border-radius: var(--UI-Radius-radius-xs);
+    border: 1px solid var(--Colors-Stroke-Strong);
+    background: var(--Colors-Backgrounds-Main-Top);
+    color: var(--Colors-Text-Body-Strong);
+    font-size: var(--Fonts-Body-Default-xxs);
+    line-height: 1.4;
+    white-space: nowrap;
+    text-align: left;
+    z-index: 30;
+    box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+    pointer-events: none;
+}
+
+.cancel-run-button[data-tooltip]:hover::before,
+.cancel-run-button[data-tooltip]:focus-visible::before {
+    content: '';
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + var(--UI-Spacing-spacing-xxs));
+    transform: translateX(-50%);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 6px solid var(--Colors-Backgrounds-Main-Top);
+    z-index: 31;
+    pointer-events: none;
 }
 
 /* Canvas clear sits at the lower-left edge; avoid clipping the hint bubble */
@@ -1406,5 +1447,21 @@ path.connection-line.active {
 
 .canvas-clear:disabled[data-disabled-hint]:hover::before {
     left: 20px;
+    transform: none;
+}
+
+/* Cancel button sits at the lower-right edge; avoid clipping the tooltip bubble */
+.cancel-run-button[data-tooltip]:hover::after,
+.cancel-run-button[data-tooltip]:focus-visible::after {
+    left: auto;
+    right: 0;
+    transform: none;
+    max-width: min(320px, calc(100vw - 48px));
+}
+
+.cancel-run-button[data-tooltip]:hover::before,
+.cancel-run-button[data-tooltip]:focus-visible::before {
+    left: auto;
+    right: 20px;
     transform: none;
 }
