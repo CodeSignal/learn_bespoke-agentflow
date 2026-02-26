@@ -260,17 +260,25 @@ export class WorkflowEngine {
   }
 
   private normalizeGraph(graph: WorkflowGraph): WorkflowGraph {
+    const removedNodeIds = new Set<string>();
     const nodes = Array.isArray(graph.nodes)
-      ? graph.nodes.map((node) => {
-          if (node.type === 'input') {
-            return { ...node, type: 'approval' };
+      ? graph.nodes.flatMap((node) => {
+          const normalizedNode = node.type === 'input' ? { ...node, type: 'approval' } : node;
+          if (normalizedNode.type === 'end') {
+            removedNodeIds.add(normalizedNode.id);
+            return [];
           }
-          return node;
+          return [normalizedNode];
         })
       : [];
     return {
       nodes,
-      connections: Array.isArray(graph.connections) ? graph.connections : []
+      connections: Array.isArray(graph.connections)
+        ? graph.connections.filter(
+            (connection) =>
+              !removedNodeIds.has(connection.source) && !removedNodeIds.has(connection.target)
+          )
+        : []
     };
   }
 
@@ -338,8 +346,6 @@ export class WorkflowEngine {
           this.status = 'paused';
           this.waitingForInput = true;
           this.log(node.id, 'wait_input', 'Waiting for user approval');
-          return undefined;
-        case 'end':
           return undefined;
         default:
           this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
@@ -456,8 +462,6 @@ export class WorkflowEngine {
         return 'condition node';
       case 'approval':
         return 'approval node';
-      case 'end':
-        return 'end node';
       default:
         return `${node.type} node`;
     }

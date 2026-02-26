@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Visual workflow builder for agentic LLM pipelines. Users drag-and-drop nodes (Start, Agent, If/Else, Approval, End) onto a canvas, connect them, configure LLM prompts and branching logic, then execute workflows server-side against OpenAI. Run results are persisted as JSON audit trails.
+Visual workflow builder for agentic LLM pipelines. Users drag-and-drop nodes (Start, Agent, If/Else, Approval) onto a canvas, connect them, configure LLM prompts and branching logic, then execute workflows server-side against OpenAI. Run results are persisted as JSON audit trails.
 
 ## Monorepo Layout
 

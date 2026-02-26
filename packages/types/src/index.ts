@@ -1,4 +1,4 @@
-export type NodeType = 'start' | 'agent' | 'if' | 'approval' | 'end' | string;
+export type NodeType = 'start' | 'agent' | 'if' | 'approval' | string;
 
 export interface BaseNodeData {
   collapsed?: boolean;
