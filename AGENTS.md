@@ -47,3 +47,8 @@ This repository is an npm workspace monorepo:
 - Prefer existing tokens/components from the submodule before building custom UI in `apps/web`.
 - If a needed component does not exist in `design-system/`, pause and consult the user before adding a new component or introducing a non-design-system alternative.
 - In a brand new git worktree, initialize submodules before development (`git submodule update --init --recursive`), or the design-system assets will be missing.
+
+## Subagent Graph Rules
+- Subagent links are tool-delegation edges and do not represent execution flow edges.
+- Subagent hierarchies must remain acyclic (for example, `A -> B -> A` is invalid).
+- Subagent targets are tool-only nodes and cannot participate in regular execution edges.

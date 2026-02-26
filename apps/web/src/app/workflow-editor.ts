@@ -7,7 +7,8 @@ import { renderMarkdown, escapeHtml } from './markdown';
 const EXPANDED_NODE_WIDTH = 420;
 
 const TOOLS_CONFIG: Array<{ key: string; label: string; iconClass: string }> = [
-    { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' }
+    { key: 'web_search', label: 'Web Search', iconClass: 'icon-globe' },
+    { key: 'subagents', label: 'Subagents', iconClass: 'icon-engineering-manager' }
 ];
 const DEFAULT_NODE_WIDTH = 150; // Fallback if DOM not ready
 const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
@@ -18,10 +19,13 @@ const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
 };
 const IF_CONDITION_HANDLE_PREFIX = 'condition-';
 const IF_FALLBACK_HANDLE = 'false';
+const SUBAGENT_HANDLE = 'subagent';
+const SUBAGENT_TARGET_HANDLE = 'subagent-target';
 const IF_PORT_BASE_TOP = 45;
 const IF_PORT_STEP = 30;
 const IF_COLLAPSED_MULTI_CONDITION_PORT_TOP = 18;
 const IF_COLLAPSED_MULTI_FALLBACK_PORT_TOP = 45;
+const SUBAGENT_PORT_MIN_TOP = 42;
 const PREVIOUS_OUTPUT_TEMPLATE = '{{PREVIOUS_OUTPUT}}';
 const GENERIC_AGENT_SPINNER_KEY = '__generic_agent_spinner__';
 const IF_CONDITION_OPERATORS = [
@@ -83,6 +87,18 @@ type RunHistoryEntry = {
     role: string;
     content: string;
 };
+
+type SubagentRuntimeLogPayload = {
+    parentNodeId?: string;
+    subagentNodeId: string;
+    subagentName: string;
+    callId: string;
+    parentCallId?: string;
+    depth: number;
+    message?: string;
+};
+
+type SubagentCallStatus = 'running' | 'completed' | 'failed';
 
 type DropdownItem = {
     value: string;
@@ -194,6 +210,12 @@ export class WorkflowEditor {
 
     private zoomValue: HTMLElement | null;
 
+    private canvasValidationMessage: HTMLElement | null;
+
+    private canvasValidationTimeout: ReturnType<typeof setTimeout> | null;
+
+    private pendingLayoutSyncFrame: number | null;
+
     private workflowState: WorkflowState;
 
     private rightPanel: HTMLElement | null;
@@ -201,6 +223,14 @@ export class WorkflowEditor {
     private pendingAgentMessages: Map<string, HTMLElement>;
 
     private pendingAgentMessageCounts: Map<string, number>;
+
+    private subagentCallElements: Map<string, HTMLElement>;
+
+    private subagentCallSpinnerKeys: Map<string, string>;
+
+    private spinnerSubagentCallIds: Map<string, Set<string>>;
+
+    private subagentCallStatuses: Map<string, SubagentCallStatus>;
 
     private currentPrompt: string;
 
@@ -306,10 +336,17 @@ export class WorkflowEditor {
         this.cancelRunButton = document.getElementById('btn-cancel-run') as HTMLButtonElement | null;
         this.clearButton = document.getElementById('btn-clear') as HTMLButtonElement | null;
         this.zoomValue = document.getElementById('zoom-value');
+        this.canvasValidationMessage = document.getElementById('canvas-validation-message');
+        this.canvasValidationTimeout = null;
+        this.pendingLayoutSyncFrame = null;
         this.workflowState = 'idle';
         this.rightPanel = document.getElementById('right-panel');
         this.pendingAgentMessages = new Map<string, HTMLElement>();
         this.pendingAgentMessageCounts = new Map<string, number>();
+        this.subagentCallElements = new Map<string, HTMLElement>();
+        this.subagentCallSpinnerKeys = new Map<string, string>();
+        this.spinnerSubagentCallIds = new Map<string, Set<string>>();
+        this.subagentCallStatuses = new Map<string, SubagentCallStatus>();
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
         this.activeRunController = null;
@@ -443,7 +480,16 @@ export class WorkflowEditor {
             width: '100%',
             onSelect
         });
+        this.scheduleConnectionLayoutSync();
         return dropdown;
+    }
+
+    scheduleConnectionLayoutSync(): void {
+        if (this.pendingLayoutSyncFrame !== null) return;
+        this.pendingLayoutSyncFrame = window.requestAnimationFrame(() => {
+            this.pendingLayoutSyncFrame = null;
+            this.renderConnections(false);
+        });
     }
 
     applyViewport() {
@@ -515,6 +561,289 @@ export class WorkflowEditor {
         if (typeof handle !== 'string' || !handle.startsWith(IF_CONDITION_HANDLE_PREFIX)) return null;
         const parsedIndex = Number.parseInt(handle.slice(IF_CONDITION_HANDLE_PREFIX.length), 10);
         return Number.isInteger(parsedIndex) && parsedIndex >= 0 ? parsedIndex : null;
+    }
+
+    isSubagentConnection(connection: WorkflowConnection): boolean {
+        return connection.sourceHandle === SUBAGENT_HANDLE;
+    }
+
+    getSubagentConnections(connections: WorkflowConnection[] = this.connections): WorkflowConnection[] {
+        return connections.filter((connection) => this.isSubagentConnection(connection));
+    }
+
+    getExecutionConnections(connections: WorkflowConnection[] = this.connections): WorkflowConnection[] {
+        return connections.filter((connection) => !this.isSubagentConnection(connection));
+    }
+
+    isSubagentTargetNode(nodeId: string, connections: WorkflowConnection[] = this.connections): boolean {
+        return connections.some(
+            (connection) =>
+                this.isSubagentConnection(connection) &&
+                connection.target === nodeId
+        );
+    }
+
+    getSubagentTargetIds(connections: WorkflowConnection[] = this.connections): Set<string> {
+        const targetIds = new Set<string>();
+        this.getSubagentConnections(connections).forEach((connection) => {
+            targetIds.add(connection.target);
+        });
+        return targetIds;
+    }
+
+    canNodeBecomeSubagentTarget(
+        nodeId: string,
+        connections: WorkflowConnection[] = this.connections
+    ): boolean {
+        const targetNode = this.nodes.find((node) => node.id === nodeId);
+        if (!targetNode || targetNode.type !== 'agent') {
+            return false;
+        }
+
+        if (this.isSubagentTargetNode(nodeId, connections)) {
+            return false;
+        }
+
+        const candidateParents = this.nodes.filter(
+            (node) =>
+                node.type === 'agent' &&
+                node.id !== nodeId &&
+                Boolean(node.data?.tools?.subagents)
+        );
+
+        return candidateParents.some((parentNode) => {
+            const candidateConnection: WorkflowConnection = {
+                source: parentNode.id,
+                target: nodeId,
+                sourceHandle: SUBAGENT_HANDLE,
+                targetHandle: 'input'
+            };
+            return !this.getConnectionValidationError(candidateConnection, connections);
+        });
+    }
+
+    getSubagentPortTop(node: EditorNode): number {
+        const nodeEl = document.getElementById(node.id);
+        const height = nodeEl?.offsetHeight ?? (node.data?.collapsed ? 96 : 220);
+        return Math.max(SUBAGENT_PORT_MIN_TOP, height - 6);
+    }
+
+    getConnectionStartPoint(sourceNode: EditorNode, sourceHandle?: string): Point {
+        if (sourceHandle === SUBAGENT_HANDLE) {
+            return {
+                x: sourceNode.x + (this.getNodeWidth(sourceNode) / 2),
+                y: sourceNode.y + this.getSubagentPortTop(sourceNode) + 6
+            };
+        }
+        return {
+            x: sourceNode.x + this.getNodeWidth(sourceNode),
+            y: sourceNode.y + this.getOutputPortCenterYOffset(sourceNode, sourceHandle)
+        };
+    }
+
+    getConnectionEndPoint(targetNode: EditorNode, sourceHandle?: string): Point {
+        if (sourceHandle === SUBAGENT_HANDLE) {
+            return {
+                x: targetNode.x + (this.getNodeWidth(targetNode) / 2),
+                y: targetNode.y
+            };
+        }
+        return {
+            x: targetNode.x,
+            y: targetNode.y + 24
+        };
+    }
+
+    getSubagentGraphValidationError(connections: WorkflowConnection[] = this.connections): string | null {
+        const subagentConnections = this.getSubagentConnections(connections);
+        if (subagentConnections.length === 0) {
+            return null;
+        }
+
+        const nodeById = new Map(this.nodes.map((node) => [node.id, node]));
+        const incomingSubagentCounts = new Map<string, number>();
+        const adjacency = new Map<string, string[]>();
+
+        for (const connection of subagentConnections) {
+            const sourceNode = nodeById.get(connection.source);
+            const targetNode = nodeById.get(connection.target);
+
+            if (!sourceNode || sourceNode.type !== 'agent') {
+                return 'Subagent links must start from an Agent node.';
+            }
+            if (!targetNode || targetNode.type !== 'agent') {
+                return 'Subagent links must target an Agent node.';
+            }
+            if (!sourceNode.data?.tools || !sourceNode.data.tools.subagents) {
+                return 'Enable Subagents on the parent agent before linking subagents.';
+            }
+            if (connection.targetHandle && connection.targetHandle !== 'input') {
+                return 'Subagent links must connect to the target input handle.';
+            }
+            if (connection.source === connection.target) {
+                return 'An agent cannot be a subagent of itself.';
+            }
+
+            incomingSubagentCounts.set(
+                connection.target,
+                (incomingSubagentCounts.get(connection.target) ?? 0) + 1
+            );
+            if ((incomingSubagentCounts.get(connection.target) ?? 0) > 1) {
+                return 'A subagent can belong to only one parent agent.';
+            }
+
+            const adjacent = adjacency.get(connection.source) ?? [];
+            adjacent.push(connection.target);
+            adjacency.set(connection.source, adjacent);
+        }
+
+        const executionConnections = this.getExecutionConnections(connections);
+        for (const targetId of incomingSubagentCounts.keys()) {
+            const hasExecutionEdges = executionConnections.some(
+                (connection) => connection.source === targetId || connection.target === targetId
+            );
+            if (hasExecutionEdges) {
+                return 'Subagent targets cannot be connected to regular workflow execution edges.';
+            }
+        }
+
+        const visitState = new Map<string, 'visiting' | 'visited'>();
+        const visit = (nodeId: string, path: string[]): string | null => {
+            const state = visitState.get(nodeId);
+            if (state === 'visiting') {
+                const cycleStart = path.indexOf(nodeId);
+                const cyclePath = [...path.slice(cycleStart), nodeId].join(' -> ');
+                return `Subagent hierarchy must be acyclic. Cycle: ${cyclePath}`;
+            }
+            if (state === 'visited') return null;
+
+            visitState.set(nodeId, 'visiting');
+            const neighbors = adjacency.get(nodeId) ?? [];
+            for (const neighbor of neighbors) {
+                const error = visit(neighbor, [...path, neighbor]);
+                if (error) return error;
+            }
+            visitState.set(nodeId, 'visited');
+            return null;
+        };
+
+        for (const nodeId of adjacency.keys()) {
+            const error = visit(nodeId, [nodeId]);
+            if (error) {
+                return error;
+            }
+        }
+
+        return null;
+    }
+
+    getConnectionValidationError(
+        nextConnection: WorkflowConnection,
+        connections: WorkflowConnection[] = this.connections
+    ): string | null {
+        const sourceNode = this.nodes.find((node) => node.id === nextConnection.source);
+        const targetNode = this.nodes.find((node) => node.id === nextConnection.target);
+        if (!sourceNode || !targetNode) {
+            return 'Connection source or target node is missing.';
+        }
+
+        const candidateConnections = [...connections, nextConnection];
+        const nextIsSubagentConnection = this.isSubagentConnection(nextConnection);
+
+        if (nextIsSubagentConnection) {
+            if (sourceNode.type !== 'agent') {
+                return 'Only agent nodes can define subagents.';
+            }
+            if (!sourceNode.data?.tools || !sourceNode.data.tools.subagents) {
+                return 'Enable Subagents on the parent agent before adding subagent links.';
+            }
+            if (targetNode.type !== 'agent') {
+                return 'Subagent links can only target agent nodes.';
+            }
+            if (nextConnection.targetHandle !== 'input') {
+                return 'Subagent links must connect to the target input handle.';
+            }
+            if (nextConnection.source === nextConnection.target) {
+                return 'An agent cannot be a subagent of itself.';
+            }
+        } else {
+            if (this.isSubagentTargetNode(nextConnection.source, candidateConnections)) {
+                return 'Subagent targets cannot be used as sources in regular workflow edges.';
+            }
+            if (this.isSubagentTargetNode(nextConnection.target, candidateConnections)) {
+                return 'Subagent targets cannot be used as targets in regular workflow edges.';
+            }
+        }
+
+        return this.getSubagentGraphValidationError(candidateConnections);
+    }
+
+    removeOutgoingSubagentConnections(sourceNodeId: string): boolean {
+        const previousLength = this.connections.length;
+        this.connections = this.connections.filter(
+            (connection) =>
+                !(
+                    connection.source === sourceNodeId &&
+                    this.isSubagentConnection(connection)
+                )
+        );
+        return this.connections.length !== previousLength;
+    }
+
+    applyConnectionToTarget(targetNodeId: string, targetHandle: string): void {
+        if (!this.connectionStart || this.connectionStart.nodeId === targetNodeId) {
+            return;
+        }
+
+        const nextConnection: WorkflowConnection = {
+            source: this.connectionStart.nodeId,
+            target: targetNodeId,
+            sourceHandle: this.connectionStart.handle,
+            targetHandle
+        };
+        const connected = this.applyPendingConnection(nextConnection);
+
+        if (connected) {
+            this.reconnectingConnection = null;
+            this.renderConnections();
+        } else if (this.reconnectingConnection !== null) {
+            this.reconnectingConnection = null;
+            this.renderConnections();
+        }
+
+        this.clearPendingConnectionDragState();
+        this.updateRunButton();
+    }
+
+    applyPendingConnection(nextConnection: WorkflowConnection): boolean {
+        const duplicateExists = this.connections.some(
+            (conn: WorkflowConnection) =>
+                conn.source === nextConnection.source &&
+                conn.target === nextConnection.target &&
+                conn.sourceHandle === nextConnection.sourceHandle &&
+                conn.targetHandle === nextConnection.targetHandle
+        );
+        if (duplicateExists) {
+            return false;
+        }
+
+        const validationError = this.getConnectionValidationError(nextConnection);
+        if (validationError) {
+            this.setCanvasValidationMessage(validationError);
+            return false;
+        }
+
+        this.setCanvasValidationMessage(null);
+        this.connections.push(nextConnection);
+        return true;
+    }
+
+    clearPendingConnectionDragState(): void {
+        if (this.tempConnection) {
+            this.tempConnection.remove();
+        }
+        this.connectionStart = null;
+        this.tempConnection = null;
     }
 
     getIfPortTop(index: number): number {
@@ -623,6 +952,10 @@ export class WorkflowEditor {
     }
 
     getOutputPortCenterYOffset(node: EditorNode, sourceHandle?: string): number {
+        if (sourceHandle === SUBAGENT_HANDLE) {
+            return this.getSubagentPortTop(node) + 6;
+        }
+
         if (node.type === 'if') {
             if (this.shouldAggregateCollapsedIfPorts(node)) {
                 if (sourceHandle === IF_FALLBACK_HANDLE) {
@@ -670,6 +1003,27 @@ export class WorkflowEditor {
         }
     }
 
+    setCanvasValidationMessage(message: string | null): void {
+        if (this.canvasValidationTimeout !== null) {
+            clearTimeout(this.canvasValidationTimeout);
+            this.canvasValidationTimeout = null;
+        }
+        if (!this.canvasValidationMessage) return;
+        if (!message) {
+            this.canvasValidationMessage.textContent = '';
+            this.canvasValidationMessage.classList.remove('visible');
+            return;
+        }
+        this.canvasValidationMessage.textContent = message;
+        this.canvasValidationMessage.classList.add('visible');
+        this.canvasValidationTimeout = setTimeout(() => {
+            if (!this.canvasValidationMessage) return;
+            this.canvasValidationMessage.textContent = '';
+            this.canvasValidationMessage.classList.remove('visible');
+            this.canvasValidationTimeout = null;
+        }, 4500);
+    }
+
     isAbortError(error: unknown): boolean {
         if (!error) return false;
         if (error instanceof Error && error.name === 'AbortError') return true;
@@ -710,9 +1064,15 @@ export class WorkflowEditor {
             return 'Fix broken connections before running.';
         }
 
+        const subagentGraphError = this.getSubagentGraphValidationError();
+        if (subagentGraphError) {
+            return subagentGraphError;
+        }
+
         const startNode = startNodes[0];
+        const executionConnections = this.getExecutionConnections();
         const adjacency = new Map();
-        this.connections.forEach((conn: any) => {
+        executionConnections.forEach((conn: any) => {
             if (!adjacency.has(conn.source)) adjacency.set(conn.source, []);
             adjacency.get(conn.source).push(conn);
         });
@@ -822,6 +1182,26 @@ export class WorkflowEditor {
         this.runHistory.push({ role: 'user', content: text });
     }
 
+    clearSubagentSpinnerState(spinnerKey?: string): void {
+        if (spinnerKey) {
+            const callIds = this.spinnerSubagentCallIds.get(spinnerKey);
+            if (callIds) {
+                callIds.forEach((callId) => {
+                    this.subagentCallElements.delete(callId);
+                    this.subagentCallSpinnerKeys.delete(callId);
+                    this.subagentCallStatuses.delete(callId);
+                });
+            }
+            this.spinnerSubagentCallIds.delete(spinnerKey);
+            return;
+        }
+
+        this.subagentCallElements.clear();
+        this.subagentCallSpinnerKeys.clear();
+        this.spinnerSubagentCallIds.clear();
+        this.subagentCallStatuses.clear();
+    }
+
     showAgentSpinner(name?: string, nodeId?: string) {
         if (!this.chatMessages) return;
         const spinnerKey = nodeId || GENERIC_AGENT_SPINNER_KEY;
@@ -846,6 +1226,7 @@ export class WorkflowEditor {
         body.appendChild(text);
         body.appendChild(dots);
         spinner.appendChild(body);
+
         this.chatMessages.appendChild(spinner);
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
         this.pendingAgentMessages.set(spinnerKey, spinner);
@@ -863,12 +1244,14 @@ export class WorkflowEditor {
             if (!spinner) return;
             spinner.remove();
             this.pendingAgentMessages.delete(nodeId);
+            this.clearSubagentSpinnerState(nodeId);
             return;
         }
 
         this.pendingAgentMessages.forEach((spinner) => spinner.remove());
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
     }
 
     zoomCanvas(stepPercent: any) {
@@ -970,19 +1353,13 @@ export class WorkflowEditor {
                 if (!targetPort) {
                     // Connection was already removed when we started reconnecting, just render
                     this.renderConnections();
-                }
-                // Clean up will happen in onPortMouseUp if we connected, or here if we didn't
-                if (!targetPort) {
                     this.reconnectingConnection = null;
-                    this.tempConnection.remove();
-                    this.tempConnection = null;
-                    this.connectionStart = null;
+                    this.clearPendingConnectionDragState();
                 }
-            } else if (this.tempConnection && !this.reconnectingConnection) {
+                // Clean up will happen in onPortMouseUp if we connected
+            } else if (this.tempConnection && this.reconnectingConnection === null) {
                 // Normal connection creation cancelled
-                this.tempConnection.remove();
-                this.tempConnection = null;
-                this.connectionStart = null;
+                this.clearPendingConnectionDragState();
             }
         });
     }
@@ -1109,6 +1486,25 @@ export class WorkflowEditor {
                     node.data.prompt = 'Review and approve this step.';
                 }
                 updated = true;
+            }
+
+            if (node.type === 'agent') {
+                if (!node.data) node.data = {};
+                const tools = (node.data.tools && typeof node.data.tools === 'object')
+                    ? node.data.tools as Record<string, boolean>
+                    : {};
+                const nextTools = {
+                    web_search: Boolean(tools.web_search),
+                    subagents: Boolean(tools.subagents)
+                };
+                if (
+                    !node.data.tools ||
+                    node.data.tools.web_search !== nextTools.web_search ||
+                    node.data.tools.subagents !== nextTools.subagents
+                ) {
+                    node.data.tools = nextTools;
+                    updated = true;
+                }
             }
 
             if (node.type === 'if') {
@@ -1277,7 +1673,7 @@ export class WorkflowEditor {
                     userPrompt: '{{PREVIOUS_OUTPUT}}',
                     model: 'gpt-5', 
                     reasoningEffort: 'low',
-                    tools: { web_search: false },
+                    tools: { web_search: false, subagents: false },
                     collapsed: true
                 };
             case 'if': 
@@ -1359,6 +1755,12 @@ export class WorkflowEditor {
         el.style.left = `${node.x}px`;
         el.style.top = `${node.y}px`;
         el.dataset.nodeId = node.id;
+        const isSubagentTarget = node.type === 'agent' && this.isSubagentTargetNode(node.id);
+        const isSubagentCandidate =
+            node.type === 'agent' &&
+            (isSubagentTarget || this.canNodeBecomeSubagentTarget(node.id));
+        el.classList.toggle('subagent-target-node', isSubagentTarget);
+        el.classList.toggle('subagent-candidate-node', isSubagentCandidate);
 
         if (!node.data) node.data = {};
         if (node.data.collapsed === undefined) {
@@ -1595,39 +1997,48 @@ export class WorkflowEditor {
 
             // Input
             container.appendChild(buildLabel('Input'));
-            const userInputWrapper = document.createElement('div');
-            userInputWrapper.className = 'prompt-highlight-wrapper';
-            const userInputHighlight = document.createElement('div');
-            userInputHighlight.className = 'prompt-highlight-backdrop';
-            userInputHighlight.setAttribute('aria-hidden', 'true');
-            const userInputHighlightContent = document.createElement('div');
-            userInputHighlightContent.className = 'prompt-highlight-content';
-            userInputHighlight.appendChild(userInputHighlightContent);
-            const userInput = document.createElement('textarea');
-            userInput.className = 'input textarea-input prompt-highlight-input';
-            userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
-            userInput.value = data.userPrompt ?? PREVIOUS_OUTPUT_TEMPLATE;
-            const syncUserPromptHighlight = () => {
-                userInputHighlightContent.innerHTML = this.getUserPromptHighlightHTML(userInput.value);
-                userInputHighlightContent.style.transform = `translate(${-userInput.scrollLeft}px, ${-userInput.scrollTop}px)`;
-            };
-            syncUserPromptHighlight();
-            userInput.addEventListener('focus', () => {
-                userInputWrapper.classList.add('is-editing');
-            });
-            userInput.addEventListener('blur', () => {
-                userInputWrapper.classList.remove('is-editing');
+            const isSubagentTarget = this.isSubagentTargetNode(node.id);
+            if (isSubagentTarget) {
+                data.userPrompt = '';
+                const helperText = document.createElement('div');
+                helperText.className = 'subagent-input-lock-note';
+                helperText.textContent = 'Input managed by parent agent.';
+                container.appendChild(helperText);
+            } else {
+                const userInputWrapper = document.createElement('div');
+                userInputWrapper.className = 'prompt-highlight-wrapper';
+                const userInputHighlight = document.createElement('div');
+                userInputHighlight.className = 'prompt-highlight-backdrop';
+                userInputHighlight.setAttribute('aria-hidden', 'true');
+                const userInputHighlightContent = document.createElement('div');
+                userInputHighlightContent.className = 'prompt-highlight-content';
+                userInputHighlight.appendChild(userInputHighlightContent);
+                const userInput = document.createElement('textarea');
+                userInput.className = 'input textarea-input prompt-highlight-input';
+                userInput.placeholder = 'Use {{PREVIOUS_OUTPUT}} to include the previous node\'s output.';
+                userInput.value = data.userPrompt ?? PREVIOUS_OUTPUT_TEMPLATE;
+                const syncUserPromptHighlight = () => {
+                    userInputHighlightContent.innerHTML = this.getUserPromptHighlightHTML(userInput.value);
+                    userInputHighlightContent.style.transform = `translate(${-userInput.scrollLeft}px, ${-userInput.scrollTop}px)`;
+                };
                 syncUserPromptHighlight();
-            });
-            userInput.addEventListener('input', (e: any) => {
-                data.userPrompt = e.target.value;
-                syncUserPromptHighlight();
-                this.scheduleSave();
-            });
-            userInput.addEventListener('scroll', syncUserPromptHighlight);
-            userInputWrapper.appendChild(userInputHighlight);
-            userInputWrapper.appendChild(userInput);
-            container.appendChild(userInputWrapper);
+                userInput.addEventListener('focus', () => {
+                    userInputWrapper.classList.add('is-editing');
+                });
+                userInput.addEventListener('blur', () => {
+                    userInputWrapper.classList.remove('is-editing');
+                    syncUserPromptHighlight();
+                });
+                userInput.addEventListener('input', (e: any) => {
+                    data.userPrompt = e.target.value;
+                    syncUserPromptHighlight();
+                    this.scheduleSave();
+                });
+                userInput.addEventListener('scroll', syncUserPromptHighlight);
+                userInputWrapper.appendChild(userInputHighlight);
+                userInputWrapper.appendChild(userInput);
+                container.appendChild(userInputWrapper);
+            }
 
             // Model
             container.appendChild(buildLabel('Model'));
@@ -1691,6 +2102,14 @@ export class WorkflowEditor {
                     if (!data.tools) data.tools = {};
                     data.tools[tool.key] = checkbox.checked;
                     this.updatePreview(node);
+                    if (tool.key === 'subagents') {
+                        if (!checkbox.checked) {
+                            this.removeOutgoingSubagentConnections(node.id);
+                        }
+                        this.refreshNodePorts(node);
+                        this.renderConnections();
+                        this.updateRunButton();
+                    }
                 });
 
                 const box = document.createElement('span');
@@ -1814,9 +2233,47 @@ export class WorkflowEditor {
         this.scheduleSave();
     }
 
+    enforceSubagentTargetInputLocks(): void {
+        let changed = false;
+        this.nodes.forEach((node) => {
+            if (node.type !== 'agent') return;
+            if (!this.isSubagentTargetNode(node.id)) return;
+            if (!node.data) node.data = {};
+            if ((node.data.userPrompt ?? '') !== '') {
+                node.data.userPrompt = '';
+                changed = true;
+            }
+        });
+        if (changed) {
+            this.scheduleSave();
+        }
+    }
+
+    refreshSelectedNodeForm(): void {
+        if (!this.selectedNodeId) return;
+        const selectedNode = this.nodes.find((node) => node.id === this.selectedNodeId);
+        if (!selectedNode) return;
+        const selectedEl = document.getElementById(selectedNode.id);
+        if (!selectedEl) return;
+        const body = selectedEl.querySelector('.node-body.node-form');
+        if (!(body instanceof HTMLElement)) return;
+        this.renderNodeForm(selectedNode, body);
+    }
+
     // --- PORTS & CONNECTIONS (Updated for Arrows) ---
 
     renderPorts(node: any, el: any) {
+        if (node.type === 'agent') {
+            el.appendChild(
+                this.createPort(
+                    node.id,
+                    SUBAGENT_TARGET_HANDLE,
+                    'port-subagent-target',
+                    'Subagent target'
+                )
+            );
+        }
+
         if (node.type !== 'start') {
             const portIn = this.createPort(node.id, 'input', 'port-in');
             el.appendChild(portIn);
@@ -1872,6 +2329,18 @@ export class WorkflowEditor {
                         )
                     );
                 }
+            } else if (node.type === 'agent') {
+                el.appendChild(this.createPort(node.id, 'output', 'port-out'));
+                if (node.data?.tools?.subagents) {
+                    el.appendChild(
+                        this.createPort(
+                            node.id,
+                            SUBAGENT_HANDLE,
+                            'port-subagent',
+                            'Subagent'
+                        )
+                    );
+                }
             } else if (node.type === 'approval') {
                 el.appendChild(this.createPort(node.id, 'approve', 'port-out port-true', 'Approve'));
                 el.appendChild(this.createPort(node.id, 'reject', 'port-out port-false', 'Reject'));
@@ -1901,12 +2370,29 @@ export class WorkflowEditor {
             port.setAttribute('aria-disabled', 'true');
         }
         
-        if (handle === 'input') {
+        if (handle === 'input' || handle === SUBAGENT_TARGET_HANDLE) {
             port.addEventListener('mouseup', (e: any) => this.onPortMouseUp(e, nodeId, handle));
         } else if (connectable) {
             port.addEventListener('mousedown', (e: any) => this.onPortMouseDown(e, nodeId, handle));
         }
         return port;
+    }
+
+    getConnectionLineClass(
+        sourceHandle?: string,
+        options: { editable?: boolean; reconnecting?: boolean } = {}
+    ): string {
+        const classes = ['connection-line'];
+        if (options.editable) {
+            classes.push('editable');
+        }
+        if (sourceHandle === SUBAGENT_HANDLE) {
+            classes.push('connection-line-subagent');
+        }
+        if (options.reconnecting) {
+            classes.push('reconnecting');
+        }
+        return classes.join(' ');
     }
 
     // --- CONNECTION LOGIC (Same as before but renders arrows via CSS) ---
@@ -1915,15 +2401,18 @@ export class WorkflowEditor {
         e.stopPropagation();
         e.preventDefault();
         if (!this.connectionsLayer) return;
+        this.setCanvasValidationMessage(null);
         const sourceNode = this.nodes.find((candidate: any) => candidate.id === nodeId);
         if (sourceNode && this.shouldAggregateCollapsedIfPorts(sourceNode) && this.getIfConditionIndexFromHandle(handle) !== null) {
             return;
         }
-        const world = this.screenToWorld(e.clientX, e.clientY);
-        this.connectionStart = { nodeId, handle, x: world.x, y: world.y };
+        const startPoint = sourceNode
+            ? this.getConnectionStartPoint(sourceNode, handle)
+            : this.screenToWorld(e.clientX, e.clientY);
+        this.connectionStart = { nodeId, handle, x: startPoint.x, y: startPoint.y };
         
         this.tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        this.tempConnection.setAttribute('class', 'connection-line');
+        this.tempConnection.setAttribute('class', this.getConnectionLineClass(handle));
         this.tempConnection.setAttribute('d', `M ${this.connectionStart.x} ${this.connectionStart.y} L ${this.connectionStart.x} ${this.connectionStart.y}`);
         this.connectionsLayer.appendChild(this.tempConnection);
     }
@@ -1932,43 +2421,45 @@ export class WorkflowEditor {
         if (!this.connectionStart) return;
         if (!this.tempConnection) return;
         const world = this.screenToWorld(e.clientX, e.clientY);
-        this.tempConnection.setAttribute('d', this.getPathD(this.connectionStart.x, this.connectionStart.y, world.x, world.y));
+        this.tempConnection.setAttribute(
+            'd',
+            this.getPathD(
+                this.connectionStart.x,
+                this.connectionStart.y,
+                world.x,
+                world.y,
+                this.connectionStart.handle
+            )
+        );
     }
 
     onPortMouseUp(e: any, nodeId: any, handle: any) {
         e.stopPropagation();
         if (this.connectionStart && this.connectionStart.nodeId !== nodeId) {
-            const nextConnection: WorkflowConnection = {
-                source: this.connectionStart.nodeId,
-                target: nodeId,
-                sourceHandle: this.connectionStart.handle,
-                targetHandle: handle
-            };
-            const duplicateExists = this.connections.some(
-                (conn: any) =>
-                    conn.source === nextConnection.source &&
-                    conn.target === nextConnection.target &&
-                    conn.sourceHandle === nextConnection.sourceHandle &&
-                    conn.targetHandle === nextConnection.targetHandle
-            );
-            // If we're reconnecting an existing connection, create new connection with updated target
-            if (this.reconnectingConnection !== null) {
-                // Connection was already removed from array, just create new one
-                if (!duplicateExists) {
-                    this.connections.push(nextConnection);
+            if (this.connectionStart.handle === SUBAGENT_HANDLE && handle !== SUBAGENT_TARGET_HANDLE) {
+                this.setCanvasValidationMessage('Subagent links must connect to the top green subagent connector.');
+                if (this.reconnectingConnection !== null) {
+                    this.reconnectingConnection = null;
+                    this.renderConnections();
                 }
-                this.reconnectingConnection = null;
-            } else {
-                // Creating a new connection
-                if (!duplicateExists) {
-                    this.connections.push(nextConnection);
-                }
+                this.clearPendingConnectionDragState();
+                this.updateRunButton();
+                return;
             }
-            this.renderConnections();
-            if(this.tempConnection) this.tempConnection.remove();
-            this.connectionStart = null;
-            this.tempConnection = null;
-            this.updateRunButton();
+
+            if (this.connectionStart.handle !== SUBAGENT_HANDLE && handle === SUBAGENT_TARGET_HANDLE) {
+                this.setCanvasValidationMessage('Regular workflow links must connect to the side input connector.');
+                if (this.reconnectingConnection !== null) {
+                    this.reconnectingConnection = null;
+                    this.renderConnections();
+                }
+                this.clearPendingConnectionDragState();
+                this.updateRunButton();
+                return;
+            }
+
+            const targetHandle = handle === SUBAGENT_TARGET_HANDLE ? 'input' : handle;
+            this.applyConnectionToTarget(nodeId, targetHandle);
         } else if (this.reconnectingConnection !== null) {
             // Released without connecting to anything - connection already deleted, just clean up
             this.reconnectingConnection = null;
@@ -1990,11 +2481,9 @@ export class WorkflowEditor {
         
         const sourceNode = this.nodes.find((n: any) => n.id === connection.source);
         if (!sourceNode) return;
-        
-        const startYOffset = this.getOutputPortCenterYOffset(sourceNode, connection.sourceHandle);
-        
-        const startX = sourceNode.x + this.getNodeWidth(sourceNode);
-        const startY = sourceNode.y + startYOffset;
+        const startPoint = this.getConnectionStartPoint(sourceNode, connection.sourceHandle);
+        const startX = startPoint.x;
+        const startY = startPoint.y;
         const world = this.screenToWorld(e.clientX, e.clientY);
         
         this.connectionStart = {
@@ -2011,13 +2500,21 @@ export class WorkflowEditor {
         
         // Create temp connection for dragging
         this.tempConnection = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        this.tempConnection.setAttribute('class', 'connection-line reconnecting');
-        this.tempConnection.setAttribute('d', this.getPathD(startX, startY, world.x, world.y));
+        this.tempConnection.setAttribute(
+            'class',
+            this.getConnectionLineClass(connection.sourceHandle, { reconnecting: true })
+        );
+        this.tempConnection.setAttribute(
+            'd',
+            this.getPathD(startX, startY, world.x, world.y, connection.sourceHandle)
+        );
         this.connectionsLayer.appendChild(this.tempConnection);
     }
 
-    renderConnections() {
+    renderConnections(refreshSelectedForm = true) {
         if (!this.connectionsLayer) return;
+        this.enforceSubagentTargetInputLocks();
+        this.updateSubagentTargetNodeStyles();
         const connectionsLayer = this.connectionsLayer;
         // Clear only permanent lines
         const lines = Array.from(connectionsLayer.querySelectorAll('.connection-line'));
@@ -2030,17 +2527,16 @@ export class WorkflowEditor {
             const targetNode = this.nodes.find((n: any) => n.id === conn.target);
             if (!sourceNode || !targetNode) return;
 
-            const startYOffset = this.getOutputPortCenterYOffset(sourceNode, conn.sourceHandle);
-
-            // Calculate start/end points based on node position + standard port offsets
-            const startX = sourceNode.x + this.getNodeWidth(sourceNode);
-            const startY = sourceNode.y + startYOffset;
-            const endX = targetNode.x;
-            const endY = targetNode.y + 24; // Input port offset
+            const startPoint = this.getConnectionStartPoint(sourceNode, conn.sourceHandle);
+            const endPoint = this.getConnectionEndPoint(targetNode, conn.sourceHandle);
+            const startX = startPoint.x;
+            const startY = startPoint.y;
+            const endX = endPoint.x;
+            const endY = endPoint.y;
 
             const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-            path.setAttribute('class', 'connection-line editable');
-            path.setAttribute('d', this.getPathD(startX, startY, endX, endY));
+            path.setAttribute('class', this.getConnectionLineClass(conn.sourceHandle, { editable: true }));
+            path.setAttribute('d', this.getPathD(startX, startY, endX, endY, conn.sourceHandle));
             path.dataset.connectionIndex = index;
             path.dataset.sourceNodeId = conn.source;
             path.dataset.sourceHandle = conn.sourceHandle;
@@ -2048,10 +2544,37 @@ export class WorkflowEditor {
             path.addEventListener('mousedown', (e: any) => this.onConnectionLineMouseDown(e, conn, index));
             connectionsLayer.appendChild(path);
         });
+        if (refreshSelectedForm) {
+            this.refreshSelectedNodeForm();
+        }
         this.scheduleSave();
     }
 
-    getPathD(startX: number, startY: number, endX: number, endY: number): string {
+    updateSubagentTargetNodeStyles(connections: WorkflowConnection[] = this.connections): void {
+        const subagentTargets = this.getSubagentTargetIds(connections);
+        this.nodes.forEach((node) => {
+            const el = document.getElementById(node.id);
+            if (!el) return;
+            const isSubagentTarget = node.type === 'agent' && subagentTargets.has(node.id);
+            el.classList.toggle('subagent-target-node', isSubagentTarget);
+            const isSubagentCandidate =
+                node.type === 'agent' &&
+                (isSubagentTarget || this.canNodeBecomeSubagentTarget(node.id, connections));
+            el.classList.toggle('subagent-candidate-node', isSubagentCandidate);
+        });
+    }
+
+    getPathD(
+        startX: number,
+        startY: number,
+        endX: number,
+        endY: number,
+        sourceHandle?: string
+    ): string {
+        if (sourceHandle === SUBAGENT_HANDLE) {
+            const verticalControlOffset = Math.max(40, Math.abs(endY - startY) * 0.35);
+            return `M ${startX} ${startY} C ${startX} ${startY + verticalControlOffset}, ${endX} ${endY - verticalControlOffset}, ${endX} ${endY}`;
+        }
         const controlPointOffset = Math.abs(endX - startX) * 0.5;
         return `M ${startX} ${startY} C ${startX + controlPointOffset} ${startY}, ${endX - controlPointOffset} ${endY}, ${endX} ${endY}`;
     }
@@ -2227,6 +2750,7 @@ export class WorkflowEditor {
         this.chatMessages.innerHTML = '';
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
         if (typeof _promptText === 'string' && _promptText.trim()) {
             this.appendChatMessage(_promptText, 'user');
         }
@@ -2281,6 +2805,260 @@ export class WorkflowEditor {
         return (node?.data?.agentName || '').trim() || 'Agent';
     }
 
+    isSubagentCallLogType(type: string): boolean {
+        return (
+            type === 'subagent_call_start' ||
+            type === 'subagent_call_end' ||
+            type === 'subagent_call_error'
+        );
+    }
+
+    parseSubagentRuntimeLogPayload(entry: any): SubagentRuntimeLogPayload | null {
+        if (!this.isSubagentCallLogType(entry?.type || '')) {
+            return null;
+        }
+        if (typeof entry?.content !== 'string' || !entry.content.trim()) {
+            return null;
+        }
+
+        try {
+            const parsed = JSON.parse(entry.content) as Partial<SubagentRuntimeLogPayload>;
+            if (
+                typeof parsed.callId !== 'string' ||
+                typeof parsed.subagentNodeId !== 'string' ||
+                typeof parsed.subagentName !== 'string' ||
+                typeof parsed.depth !== 'number'
+            ) {
+                return null;
+            }
+            return {
+                callId: parsed.callId,
+                subagentNodeId: parsed.subagentNodeId,
+                subagentName: parsed.subagentName,
+                depth: parsed.depth,
+                parentCallId: typeof parsed.parentCallId === 'string' ? parsed.parentCallId : undefined,
+                parentNodeId: typeof parsed.parentNodeId === 'string' ? parsed.parentNodeId : undefined,
+                message: typeof parsed.message === 'string' ? parsed.message : undefined
+            };
+        } catch {
+            return null;
+        }
+    }
+
+    ensureSpinnerSubagentList(spinner: HTMLElement): HTMLElement {
+        const existing = spinner.querySelector('.chat-subagent-list');
+        if (existing instanceof HTMLElement) {
+            return existing;
+        }
+        const created = document.createElement('div');
+        created.className = 'chat-subagent-list';
+        spinner.appendChild(created);
+        return created;
+    }
+
+    ensureSpinnerSubagentSummary(spinner: HTMLElement): HTMLElement {
+        const existing = spinner.querySelector('.chat-subagent-summary');
+        if (existing instanceof HTMLElement) {
+            return existing;
+        }
+
+        const list = this.ensureSpinnerSubagentList(spinner);
+        const created = document.createElement('div');
+        created.className = 'chat-subagent-summary';
+        spinner.insertBefore(created, list);
+        return created;
+    }
+
+    updateSubagentToggleState(item: HTMLElement): void {
+        const toggle = item.querySelector('.chat-subagent-toggle');
+        if (!(toggle instanceof HTMLButtonElement)) return;
+
+        const hasChildren = item.classList.contains('has-children');
+        if (!hasChildren) {
+            toggle.hidden = true;
+            toggle.disabled = true;
+            toggle.textContent = '';
+            toggle.removeAttribute('aria-label');
+            return;
+        }
+
+        const isCollapsed = item.classList.contains('collapsed');
+        toggle.hidden = false;
+        toggle.disabled = false;
+        toggle.textContent = isCollapsed ? '▸' : '▾';
+        toggle.setAttribute('aria-label', isCollapsed ? 'Expand nested subagents' : 'Collapse nested subagents');
+    }
+
+    markSubagentItemHasChildren(callId: string): void {
+        const parentItem = this.subagentCallElements.get(callId);
+        if (!parentItem) return;
+        parentItem.classList.add('has-children');
+        parentItem.classList.remove('collapsed');
+        this.updateSubagentToggleState(parentItem);
+    }
+
+    updateSpinnerSubagentSummary(spinnerKey: string): void {
+        const spinner = this.pendingAgentMessages.get(spinnerKey);
+        if (!spinner) return;
+
+        const callIds = this.spinnerSubagentCallIds.get(spinnerKey);
+        if (!callIds || callIds.size === 0) {
+            const existing = spinner.querySelector('.chat-subagent-summary');
+            if (existing instanceof HTMLElement) {
+                existing.remove();
+            }
+            return;
+        }
+
+        let running = 0;
+        let completed = 0;
+        let failed = 0;
+
+        callIds.forEach((callId) => {
+            const status = this.subagentCallStatuses.get(callId);
+            if (status === 'running') running += 1;
+            else if (status === 'completed') completed += 1;
+            else if (status === 'failed') failed += 1;
+        });
+
+        const summary = this.ensureSpinnerSubagentSummary(spinner);
+        const parts = [`${running} running`, `${completed} done`];
+        if (failed > 0) {
+            parts.push(`${failed} failed`);
+        }
+        summary.textContent = `Subagents: ${parts.join(' · ')}`;
+    }
+
+    ensureSubagentCallItem(spinnerKey: string, payload: SubagentRuntimeLogPayload): HTMLElement | null {
+        const existing = this.subagentCallElements.get(payload.callId);
+        if (existing) {
+            return existing;
+        }
+
+        const spinner = this.pendingAgentMessages.get(spinnerKey);
+        if (!spinner) {
+            return null;
+        }
+
+        const item = document.createElement('div');
+        item.className = 'chat-subagent-item running';
+        item.dataset.callId = payload.callId;
+        item.dataset.depth = String(payload.depth);
+
+        const row = document.createElement('div');
+        row.className = 'chat-subagent-row';
+        const main = document.createElement('div');
+        main.className = 'chat-subagent-main';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'chat-subagent-toggle';
+        toggle.hidden = true;
+        toggle.disabled = true;
+        toggle.addEventListener('click', (event) => {
+            event.preventDefault();
+            item.classList.toggle('collapsed');
+            this.updateSubagentToggleState(item);
+        });
+        const name = document.createElement('span');
+        name.className = 'chat-subagent-name';
+        name.textContent = payload.subagentName;
+        main.appendChild(toggle);
+        main.appendChild(name);
+        const status = document.createElement('span');
+        status.className = 'chat-subagent-status';
+        row.appendChild(main);
+        row.appendChild(status);
+        item.appendChild(row);
+
+        const children = document.createElement('div');
+        children.className = 'chat-subagent-children';
+        item.appendChild(children);
+
+        const parentContainer = payload.parentCallId
+            ? (() => {
+                this.markSubagentItemHasChildren(payload.parentCallId);
+                return this.subagentCallElements.get(payload.parentCallId)?.querySelector('.chat-subagent-children');
+            })()
+            : null;
+        const hostContainer = parentContainer instanceof HTMLElement
+            ? parentContainer
+            : this.ensureSpinnerSubagentList(spinner);
+        hostContainer.appendChild(item);
+        this.updateSubagentToggleState(item);
+
+        this.subagentCallElements.set(payload.callId, item);
+        this.subagentCallSpinnerKeys.set(payload.callId, spinnerKey);
+        const callIdsForSpinner = this.spinnerSubagentCallIds.get(spinnerKey) ?? new Set<string>();
+        callIdsForSpinner.add(payload.callId);
+        this.spinnerSubagentCallIds.set(spinnerKey, callIdsForSpinner);
+        return item;
+    }
+
+    setSubagentCallItemStatus(
+        callId: string,
+        statusClass: SubagentCallStatus,
+        message?: string
+    ): void {
+        const item = this.subagentCallElements.get(callId);
+        if (!item) return;
+        this.subagentCallStatuses.set(callId, statusClass);
+        item.classList.remove('running', 'completed', 'failed');
+        item.classList.add(statusClass);
+        const statusEl = item.querySelector('.chat-subagent-status');
+        if (!(statusEl instanceof HTMLElement)) return;
+        statusEl.classList.remove('running-indicator', 'done-indicator');
+        statusEl.replaceChildren();
+
+        if (statusClass === 'running') {
+            statusEl.classList.add('running-indicator');
+            statusEl.setAttribute('aria-label', 'Running');
+            const spinner = document.createElement('span');
+            spinner.className = 'chat-spinner chat-spinner-inline';
+            spinner.setAttribute('aria-hidden', 'true');
+            spinner.innerHTML = '<span></span><span></span><span></span>';
+            statusEl.appendChild(spinner);
+            return;
+        }
+        if (statusClass === 'completed') {
+            statusEl.classList.add('done-indicator');
+            statusEl.removeAttribute('aria-label');
+            statusEl.textContent = '✓';
+            return;
+        }
+        statusEl.removeAttribute('aria-label');
+        statusEl.textContent = message && message.trim() ? message.trim() : 'Failed';
+    }
+
+    handleSubagentLogEntry(entry: any, options: { createSpinnerIfMissing?: boolean } = {}): void {
+        const payload = this.parseSubagentRuntimeLogPayload(entry);
+        if (!payload) return;
+
+        const spinnerKey =
+            payload.parentNodeId ||
+            (typeof entry?.nodeId === 'string' ? entry.nodeId : GENERIC_AGENT_SPINNER_KEY);
+        const createSpinnerIfMissing = options.createSpinnerIfMissing ?? true;
+
+        if (!this.pendingAgentMessages.has(spinnerKey) && createSpinnerIfMissing) {
+            this.showAgentSpinner(this.getAgentNameForNode(spinnerKey), spinnerKey);
+        }
+        if (!this.pendingAgentMessages.has(spinnerKey)) {
+            return;
+        }
+
+        if (entry.type === 'subagent_call_start') {
+            const item = this.ensureSubagentCallItem(spinnerKey, payload);
+            if (item) {
+                this.setSubagentCallItemStatus(payload.callId, 'running');
+            }
+            this.updateSpinnerSubagentSummary(spinnerKey);
+            return;
+        }
+
+        const mappedStatus = entry.type === 'subagent_call_error' ? 'failed' : 'completed';
+        this.setSubagentCallItemStatus(payload.callId, mappedStatus, payload.message);
+        this.updateSpinnerSubagentSummary(spinnerKey);
+    }
+
     onLogEntry(entry: any) {
         const type = entry.type || '';
         if (type === 'step_start') {
@@ -2289,6 +3067,8 @@ export class WorkflowEditor {
                 this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
                 this.showAgentSpinner(this.getAgentNameForNode(entry.nodeId), entry.nodeId);
             }
+        } else if (this.isSubagentCallLogType(type)) {
+            this.handleSubagentLogEntry(entry);
         } else if (type === 'llm_response') {
             this.hideAgentSpinner(GENERIC_AGENT_SPINNER_KEY);
             this.hideAgentSpinner(entry.nodeId);
@@ -2309,12 +3089,14 @@ export class WorkflowEditor {
         this.chatMessages.innerHTML = '';
         this.pendingAgentMessages.clear();
         this.pendingAgentMessageCounts.clear();
+        this.clearSubagentSpinnerState();
         this.lastLlmResponseContent = null;
         const initialPromptFromLogs = this.getInitialPromptFromLogs(logs);
         if (initialPromptFromLogs) {
             this.appendChatMessage(initialPromptFromLogs, 'user');
         }
         const activeAgentNodeCounts = new Map<string, number>();
+        const subagentEntries: any[] = [];
         logs.forEach((entry: any) => {
             const entryNodeId = typeof entry?.nodeId === 'string' ? entry.nodeId : null;
             const entryNode = entryNodeId ? this.getRunNodeById(entryNodeId) : undefined;
@@ -2333,6 +3115,11 @@ export class WorkflowEditor {
                 } else {
                     activeAgentNodeCounts.delete(entryNodeId);
                 }
+            }
+
+            if (this.isSubagentCallLogType(entry.type || '')) {
+                subagentEntries.push(entry);
+                return;
             }
 
             if (this.isApprovalInputLog(entry)) {
@@ -2356,6 +3143,8 @@ export class WorkflowEditor {
                 this.showAgentSpinner(this.getAgentNameForNode(nodeId), nodeId);
             }
         });
+
+        subagentEntries.forEach((entry) => this.handleSubagentLogEntry(entry, { createSpinnerIfMissing: false }));
     }
 
     async runWorkflow() {

@@ -149,6 +149,27 @@ body {
     display: flex;
 }
 
+.canvas-validation-message {
+    position: absolute;
+    top: calc(var(--UI-Spacing-spacing-ms) + 52px);
+    right: var(--UI-Spacing-spacing-ms);
+    max-width: min(440px, 60vw);
+    padding: var(--UI-Spacing-spacing-xxs) var(--UI-Spacing-spacing-xs);
+    border: 1px solid var(--Colors-Alert-Error-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    background: color-mix(in srgb, var(--Colors-Alert-Error-Default) 10%, white);
+    color: var(--Colors-Alert-Error-Default);
+    box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+    font-size: var(--Fonts-Body-Default-xs);
+    line-height: 1.35;
+    z-index: 5;
+    display: none;
+}
+
+.canvas-validation-message.visible {
+    display: block;
+}
+
 .canvas-clear {
     position: absolute;
     bottom: var(--UI-Spacing-spacing-ms);
@@ -239,6 +260,10 @@ path.connection-line {
     pointer-events: none;
 }
 
+path.connection-line.connection-line-subagent {
+    stroke: var(--Colors-Alert-Success-Medium);
+}
+
 path.connection-line.editable {
     pointer-events: stroke;
     cursor: grab;
@@ -250,6 +275,10 @@ path.connection-line.editable:hover {
     stroke-width: 4px;
 }
 
+path.connection-line.editable.connection-line-subagent:hover {
+    stroke: color-mix(in srgb, var(--Colors-Alert-Success-Medium) 80%, black);
+}
+
 path.connection-line.editable:active {
     cursor: grabbing;
 }
@@ -259,6 +288,10 @@ path.connection-line.reconnecting {
     stroke-width: 3px;
     stroke-dasharray: 5,5;
     pointer-events: none;
+}
+
+path.connection-line.reconnecting.connection-line-subagent {
+    stroke: var(--Colors-Alert-Success-Medium);
 }
 
 path.connection-line.active {
@@ -289,6 +322,20 @@ path.connection-line.active {
     border-color: var(--Colors-Box-Stroke-Selected-Emphasis);
     box-shadow: 0 0 0 3px var(--Colors-Box-Focus);
     z-index: 10;
+}
+
+.node.subagent-target-node {
+    border-color: var(--Colors-Alert-Success-Medium);
+}
+
+.node.subagent-target-node.selected {
+    border-color: var(--Colors-Alert-Success-Medium);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--Colors-Alert-Success-Medium) 25%, white);
+}
+
+.node.subagent-target-node .port-in,
+.node.subagent-target-node .port-out {
+    display: none;
 }
 
 /* Expanded Mode (In-Node Editing) */
@@ -503,6 +550,28 @@ path.connection-line.active {
     line-height: 1;
 }
 .port-condition-fallback { border-color: var(--Colors-Alert-Error-Default); }
+.port-subagent {
+    top: auto;
+    bottom: calc(-1 * var(--UI-Spacing-spacing-xs));
+    left: calc(50% - var(--UI-Spacing-spacing-xs));
+    right: auto;
+    border-color: var(--Colors-Alert-Success-Medium);
+}
+
+.port-subagent-target {
+    top: calc(-1 * (var(--UI-Spacing-spacing-xs) + (var(--UI-Spacing-spacing-min) / 2)));
+    left: calc(50% - var(--UI-Spacing-spacing-xs));
+    right: auto;
+    border-color: var(--Colors-Alert-Success-Medium);
+    opacity: 0;
+    pointer-events: none;
+}
+
+.node.subagent-candidate-node .port-subagent-target,
+.node.subagent-target-node .port-subagent-target {
+    opacity: 1;
+    pointer-events: auto;
+}
 
 /* Form Styles inside Node */
 .node-form label {
@@ -652,6 +721,26 @@ path.connection-line.active {
     -webkit-text-fill-color: inherit;
 }
 
+.prompt-highlight-wrapper.is-subagent-locked {
+    background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Top) 88%, transparent);
+}
+
+.prompt-highlight-wrapper.is-subagent-locked .prompt-highlight-backdrop {
+    display: none;
+}
+
+.prompt-highlight-wrapper.is-subagent-locked .prompt-highlight-input {
+    color: var(--Colors-Input-Text-Placeholder);
+    -webkit-text-fill-color: var(--Colors-Input-Text-Placeholder);
+    cursor: not-allowed;
+}
+
+.subagent-input-lock-note {
+    margin-top: var(--UI-Spacing-spacing-xxs);
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-sm);
+}
+
 .ds-select {
     width: 100%;
     height: var(--UI-Input-sm);
@@ -762,13 +851,15 @@ path.connection-line.active {
 }
 
 .chat-message.agent.spinner {
-    opacity: 0.85;
+    opacity: 0.92;
+    border-radius: var(--UI-Radius-radius-s);
+    padding: var(--UI-Spacing-spacing-s);
 }
 
 .chat-spinner-row {
     display: flex;
     align-items: center;
-    gap: var(--UI-Spacing-spacing-xxs);
+    gap: var(--UI-Spacing-spacing-xs);
 }
 
 .chat-spinner-text {
@@ -801,6 +892,141 @@ path.connection-line.active {
 @keyframes chatSpinner {
     0%, 80%, 100% { transform: scale(0); opacity: 0.4; }
     40% { transform: scale(1); opacity: 1; }
+}
+
+.chat-subagent-list {
+    margin-top: 0;
+    padding: var(--UI-Spacing-spacing-m) 0 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xs);
+}
+
+.chat-subagent-summary {
+    margin-top: var(--UI-Spacing-spacing-s);
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-xxs);
+}
+
+.chat-subagent-item {
+    border: 1px solid var(--Colors-Stroke-Default);
+    border-radius: var(--UI-Radius-radius-xs);
+    padding: var(--UI-Spacing-spacing-xs) var(--UI-Spacing-spacing-s);
+    background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Default) 82%, transparent);
+}
+
+.chat-subagent-item.running {
+    border-left: 2px solid var(--Colors-Alert-Success-Medium);
+}
+
+.chat-subagent-item.completed {
+    border-left: 2px solid var(--Colors-Alert-Success-Medium-Dark);
+}
+
+.chat-subagent-item.failed {
+    border-left: 2px solid var(--Colors-Alert-Error-Default);
+}
+
+.chat-subagent-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--UI-Spacing-spacing-s);
+    min-height: calc(var(--UI-Spacing-spacing-m) + var(--UI-Spacing-spacing-xxs));
+}
+
+.chat-subagent-main {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-xxs);
+    min-width: 0;
+}
+
+.chat-subagent-toggle {
+    border: 0;
+    background: transparent;
+    color: var(--Colors-Text-Body-Medium);
+    width: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
+    min-width: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
+    height: calc(var(--UI-Spacing-spacing-ms) - var(--UI-Spacing-spacing-min));
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-subagent-toggle:disabled {
+    cursor: default;
+    opacity: 0;
+}
+
+.chat-subagent-name {
+    color: var(--Colors-Text-Body-Strong);
+    font-size: var(--Fonts-Body-Default-xxs);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-subagent-status {
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-xxs);
+    padding: calc(var(--UI-Spacing-spacing-min) / 2) var(--UI-Spacing-spacing-xs);
+    border-radius: var(--UI-Radius-radius-mxl);
+    background: color-mix(in srgb, var(--Colors-Backgrounds-Main-Top) 86%, transparent);
+}
+
+.chat-subagent-status.running-indicator,
+.chat-subagent-status.done-indicator {
+    min-width: calc(var(--UI-Spacing-spacing-m) + var(--UI-Spacing-spacing-xxs));
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-subagent-status.running-indicator .chat-spinner.chat-spinner-inline {
+    gap: var(--UI-Spacing-spacing-min);
+}
+
+.chat-subagent-status.running-indicator .chat-spinner.chat-spinner-inline span {
+    width: calc((var(--UI-Spacing-spacing-xs) + var(--UI-Spacing-spacing-xxs)) / 2);
+    height: calc((var(--UI-Spacing-spacing-xs) + var(--UI-Spacing-spacing-xxs)) / 2);
+}
+
+.chat-subagent-item.completed > .chat-subagent-row > .chat-subagent-status {
+    color: var(--Colors-Alert-Success-Medium-Dark);
+    background: color-mix(in srgb, var(--Colors-Alert-Success-Medium) 14%, transparent);
+}
+
+.chat-subagent-item.completed > .chat-subagent-row > .chat-subagent-status.done-indicator {
+    font-size: var(--Fonts-Body-Default-sm);
+    font-weight: 700;
+    line-height: 1;
+}
+
+.chat-subagent-item.failed > .chat-subagent-row > .chat-subagent-status {
+    color: var(--Colors-Alert-Error-Default);
+    background: color-mix(in srgb, var(--Colors-Alert-Error-Default) 14%, transparent);
+}
+
+.chat-subagent-children {
+    margin-top: var(--UI-Spacing-spacing-xs);
+    margin-left: var(--UI-Spacing-spacing-s);
+    padding-left: var(--UI-Spacing-spacing-xs);
+    border-left: 1px dashed color-mix(in srgb, var(--Colors-Stroke-Default) 70%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: var(--UI-Spacing-spacing-xs);
+}
+
+.chat-subagent-item.collapsed > .chat-subagent-children {
+    display: none;
 }
 
 .chat-message > div {
