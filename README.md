@@ -35,12 +35,18 @@ data/
    ```bash
    export OPENAI_API_KEY="sk-..."
    ```
-3. Start the integrated dev server (Express + embedded Vite middleware on one port):
+3. (Optional) Choose the LLM backend implementation:
+   ```bash
+   export OPENAI_LLM_BACKEND="responses"   # default
+   # or
+   export OPENAI_LLM_BACKEND="agents_sdk"
+   ```
+4. Start the integrated dev server (Express + embedded Vite middleware on one port):
    ```bash
    npm run dev
    ```
    Open `http://localhost:3000` for the UI; APIs live under `/api`.
-4. Production build:
+5. Production build:
    ```bash
    npm run build
    ```

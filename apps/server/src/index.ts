@@ -8,12 +8,35 @@ import WorkflowEngine, { type WorkflowLLM } from '@agentic/workflow-engine';
 import { config } from './config';
 import { logger } from './logger';
 import { createWorkflowRouter } from './routes/workflows';
+import { OpenAIAgentsLLMService } from './services/openai-agents-llm';
 import { OpenAILLMService } from './services/openai-llm';
 import { addWorkflow } from './store/active-workflows';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const webRoot = path.resolve(__dirname, '../../web');
 const webDist = path.join(webRoot, 'dist');
+const DEFAULT_OPENAI_BACKEND = 'responses';
+
+type OpenAiBackend = 'responses' | 'agents_sdk';
+
+function resolveOpenAiBackend(value: string | undefined): OpenAiBackend {
+  const normalized = (value ?? DEFAULT_OPENAI_BACKEND).trim().toLowerCase();
+
+  if (normalized === 'responses') {
+    return 'responses';
+  }
+
+  if (normalized === 'agents' || normalized === 'agents_sdk' || normalized === 'agents-sdk') {
+    return 'agents_sdk';
+  }
+
+  logger.warn(
+    'Unsupported OPENAI_LLM_BACKEND "%s". Falling back to "%s".',
+    value,
+    DEFAULT_OPENAI_BACKEND
+  );
+  return 'responses';
+}
 
 /**
  * On startup, scan the runs directory for persisted paused runs and re-hydrate
@@ -69,11 +92,17 @@ async function bootstrap() {
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
 
-  let llmService: OpenAILLMService | undefined;
+  const openAiBackend = resolveOpenAiBackend(process.env.OPENAI_LLM_BACKEND);
+  let llmService: WorkflowLLM | undefined;
   if (config.openAiApiKey) {
-    logger.info('OPENAI_API_KEY detected, enabling live OpenAI responses');
-    const client = new OpenAI({ apiKey: config.openAiApiKey });
-    llmService = new OpenAILLMService(client);
+    if (openAiBackend === 'agents_sdk') {
+      logger.info('OPENAI_API_KEY detected, enabling live OpenAI Agents SDK backend');
+      llmService = new OpenAIAgentsLLMService();
+    } else {
+      logger.info('OPENAI_API_KEY detected, enabling live OpenAI Responses API backend');
+      const client = new OpenAI({ apiKey: config.openAiApiKey });
+      llmService = new OpenAILLMService(client);
+    }
   } else {
     logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
   }
