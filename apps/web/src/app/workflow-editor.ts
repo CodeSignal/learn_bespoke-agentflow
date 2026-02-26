@@ -1321,19 +1321,13 @@ export class WorkflowEditor {
                 if (!targetPort) {
                     // Connection was already removed when we started reconnecting, just render
                     this.renderConnections();
-                }
-                // Clean up will happen in onPortMouseUp if we connected, or here if we didn't
-                if (!targetPort) {
                     this.reconnectingConnection = null;
-                    this.tempConnection.remove();
-                    this.tempConnection = null;
-                    this.connectionStart = null;
+                    this.clearPendingConnectionDragState();
                 }
+                // Clean up will happen in onPortMouseUp if we connected
             } else if (this.tempConnection && this.reconnectingConnection === null) {
                 // Normal connection creation cancelled
-                this.tempConnection.remove();
-                this.tempConnection = null;
-                this.connectionStart = null;
+                this.clearPendingConnectionDragState();
             }
         });
     }

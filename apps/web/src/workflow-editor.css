@@ -333,6 +333,11 @@ path.connection-line.active {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--Colors-Alert-Success-Medium) 25%, white);
 }
 
+.node.subagent-target-node .port-in,
+.node.subagent-target-node .port-out {
+    display: none;
+}
+
 /* Expanded Mode (In-Node Editing) */
 .node.expanded {
     width: var(--node-width-expanded);
