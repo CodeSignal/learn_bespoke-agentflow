@@ -24,6 +24,27 @@ type AgentsSdkAgent = {
     toolDescription?: string;
     runOptions?: { maxTurns?: number };
   }) => AgentsSdkTool;
+  on(
+    event: 'agent_start',
+    listener: (context: unknown, agent: AgentsSdkAgent) => void
+  ): void;
+  on(
+    event: 'agent_end',
+    listener: (context: unknown, output: string) => void
+  ): void;
+  on(
+    event: 'agent_tool_start',
+    listener: (context: unknown, tool: AgentsSdkTool, details: ToolCallDetails) => void
+  ): void;
+  on(
+    event: 'agent_tool_end',
+    listener: (
+      context: unknown,
+      tool: AgentsSdkTool,
+      result: string,
+      details: ToolCallDetails
+    ) => void
+  ): void;
 };
 
 type AgentsSdkRunner = {
@@ -70,6 +91,7 @@ type AgentsSdkModule = {
 type AgentNodeMeta = {
   nodeId: string;
   agentName: string;
+  parentNodeId?: string;
 };
 
 type AgentContextState = {
@@ -86,6 +108,7 @@ type PendingChildCall = {
 type AgentBuildRegistry = {
   toolRegistry: Map<string, AgentNodeMeta>;
   agentRegistry: WeakMap<object, AgentNodeMeta>;
+  agentsByNodeId: Map<string, AgentsSdkAgent>;
 };
 
 let sdkModulePromise: Promise<AgentsSdkModule> | null = null;
@@ -217,7 +240,7 @@ function buildSdkAgent(
 
   const nextAncestry = new Set(ancestry);
   nextAncestry.add(nodeId);
-  const tools = buildAgentTools(invocation, sdk, registry, nextAncestry);
+  const tools = buildAgentTools(invocation, sdk, registry, nodeId, nextAncestry);
   const agentName = getAgentName(invocation);
 
   const agentConfig: Record<string, unknown> = {
@@ -240,6 +263,7 @@ function buildSdkAgent(
 
   const agent = new sdk.Agent(agentConfig);
   registry.agentRegistry.set(agent as object, { nodeId, agentName });
+  registry.agentsByNodeId.set(nodeId, agent);
   return agent;
 }
 
@@ -247,6 +271,7 @@ function buildAgentTools(
   invocation: AgentInvocation | AgentSubagentInvocation,
   sdk: AgentsSdkModule,
   registry: AgentBuildRegistry,
+  parentNodeId: string,
   ancestry: Set<string>
 ): AgentsSdkTool[] {
   const tools: AgentsSdkTool[] = [];
@@ -262,7 +287,8 @@ function buildAgentTools(
     const toolName = toToolName(childAgentName, subagent.nodeId);
     registry.toolRegistry.set(toolName, {
       nodeId: subagent.nodeId,
-      agentName: childAgentName
+      agentName: childAgentName,
+      parentNodeId
     });
 
     tools.push(
@@ -304,7 +330,8 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
 
     const registry: AgentBuildRegistry = {
       toolRegistry: new Map<string, AgentNodeMeta>(),
-      agentRegistry: new WeakMap<object, AgentNodeMeta>()
+      agentRegistry: new WeakMap<object, AgentNodeMeta>(),
+      agentsByNodeId: new Map<string, AgentsSdkAgent>()
     };
 
     const agent = buildSdkAgent(invocation, sdk, rootNodeId, registry);
@@ -313,6 +340,7 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
     const pendingChildCallsByNodeId = new Map<string, PendingChildCall[]>();
     const contextStateByContext = new WeakMap<object, AgentContextState>();
     const activeSubagentCalls = new Map<string, AgentRuntimeEvent>();
+    const activeSubagentCallIdsByNodeId = new Map<string, string[]>();
     const generatedCallIdsByToolName = new Map<string, string[]>();
     let syntheticCallCounter = 0;
 
@@ -321,30 +349,62 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
       return `${toolName}_${syntheticCallCounter}`;
     };
 
-    runner.on('agent_start', (context, activeAgent) => {
-      if (!isObject(context)) return;
-      const agentMeta = registry.agentRegistry.get(activeAgent as object);
-      if (!agentMeta) return;
+    const getResolvedCallIdForToolEnd = (
+      toolName: string,
+      subagentNodeId: string,
+      details: ToolCallDetails
+    ): string => {
+      const explicitCallId = getToolCallId(details);
+      if (explicitCallId) {
+        return explicitCallId;
+      }
 
-      const pendingQueue = pendingChildCallsByNodeId.get(agentMeta.nodeId);
+      const generatedCallIds = generatedCallIdsByToolName.get(toolName);
+      if (generatedCallIds && generatedCallIds.length > 0) {
+        const nextGeneratedCallId = generatedCallIds.shift();
+        if (generatedCallIds.length === 0) {
+          generatedCallIdsByToolName.delete(toolName);
+        }
+        if (nextGeneratedCallId) {
+          return nextGeneratedCallId;
+        }
+      }
+
+      const activeCallIdsForNode = activeSubagentCallIdsByNodeId.get(subagentNodeId);
+      if (activeCallIdsForNode && activeCallIdsForNode.length > 0) {
+        return activeCallIdsForNode[activeCallIdsForNode.length - 1];
+      }
+
+      return getSyntheticCallId(toolName);
+    };
+
+    const handleAgentStart = (nodeId: string, context: unknown): void => {
+      if (!isObject(context)) return;
+
+      const pendingQueue = pendingChildCallsByNodeId.get(nodeId);
       const pendingCall = pendingQueue?.shift();
       if (pendingQueue && pendingQueue.length === 0) {
-        pendingChildCallsByNodeId.delete(agentMeta.nodeId);
+        pendingChildCallsByNodeId.delete(nodeId);
       }
 
       contextStateByContext.set(context, {
-        nodeId: agentMeta.nodeId,
+        nodeId,
         depth: pendingCall?.depth ?? 0,
         activeCallId: pendingCall?.callId
       });
-    });
+    };
 
-    runner.on('agent_end', (context) => {
+    const handleAgentEnd = (context: unknown): void => {
       if (!isObject(context)) return;
       contextStateByContext.delete(context);
-    });
+    };
 
-    runner.on('agent_tool_start', (context, _activeAgent, tool, details) => {
+    const handleAgentToolStart = (
+      sourceNodeId: string,
+      context: unknown,
+      tool: AgentsSdkTool,
+      details: ToolCallDetails
+    ): void => {
       const toolName = getToolName(tool);
       if (!toolName) return;
 
@@ -359,60 +419,66 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
         generatedCallIds.push(callId);
         generatedCallIdsByToolName.set(toolName, generatedCallIds);
       }
-      const depth = (contextState?.depth ?? 0) + 1;
+      let parentCallId = contextState?.activeCallId;
+      let parentDepth = contextState?.depth;
+
+      if (!parentCallId) {
+        const activeParentCalls = activeSubagentCallIdsByNodeId.get(sourceNodeId);
+        const fallbackParentCallId = activeParentCalls?.[activeParentCalls.length - 1];
+        if (fallbackParentCallId) {
+          parentCallId = fallbackParentCallId;
+          parentDepth = activeSubagentCalls.get(fallbackParentCallId)?.depth;
+        }
+      }
+
+      const depth = (parentDepth ?? 0) + 1;
       const event: AgentRuntimeEvent = {
         type: 'subagent_call_start',
         parentNodeId: rootNodeId,
         subagentNodeId: subagentMeta.nodeId,
         subagentName: subagentMeta.agentName,
         callId,
-        parentCallId: contextState?.activeCallId,
+        parentCallId,
         depth
       };
 
       activeSubagentCalls.set(callId, event);
+      const activeCallIdsForNode = activeSubagentCallIdsByNodeId.get(subagentMeta.nodeId) ?? [];
+      activeCallIdsForNode.push(callId);
+      activeSubagentCallIdsByNodeId.set(subagentMeta.nodeId, activeCallIdsForNode);
       emitRuntimeEvent(options, event);
 
       const pendingQueue = pendingChildCallsByNodeId.get(subagentMeta.nodeId) ?? [];
       pendingQueue.push({ callId, depth });
       pendingChildCallsByNodeId.set(subagentMeta.nodeId, pendingQueue);
-    });
+    };
 
-    runner.on('agent_tool_end', (_context, _activeAgent, tool, _result, details) => {
+    const handleAgentToolEnd = (tool: AgentsSdkTool, details: ToolCallDetails): void => {
       const toolName = getToolName(tool);
       if (!toolName) return;
 
       const subagentMeta = registry.toolRegistry.get(toolName);
       if (!subagentMeta) return;
 
-      const explicitCallId = getToolCallId(details);
-      let callId = explicitCallId;
+      const callId = getResolvedCallIdForToolEnd(toolName, subagentMeta.nodeId, details);
 
-      if (!callId) {
-        const generatedCallIds = generatedCallIdsByToolName.get(toolName);
-        if (generatedCallIds && generatedCallIds.length > 0) {
-          const nextGeneratedCallId = generatedCallIds.shift();
-          if (generatedCallIds.length === 0) {
-            generatedCallIdsByToolName.delete(toolName);
-          }
-          if (nextGeneratedCallId) {
-            callId = nextGeneratedCallId;
-          }
+      const startEvent = activeSubagentCalls.get(callId);
+      const resolvedSubagentNodeId = startEvent?.subagentNodeId ?? subagentMeta.nodeId;
+      const activeCallIdsForNode = activeSubagentCallIdsByNodeId.get(resolvedSubagentNodeId);
+      if (activeCallIdsForNode && activeCallIdsForNode.length > 0) {
+        const callIndex = activeCallIdsForNode.lastIndexOf(callId);
+        if (callIndex >= 0) {
+          activeCallIdsForNode.splice(callIndex, 1);
+        }
+        if (activeCallIdsForNode.length === 0) {
+          activeSubagentCallIdsByNodeId.delete(resolvedSubagentNodeId);
         }
       }
 
-      if (!callId) {
-        const activeCallForTool = Array.from(activeSubagentCalls.values()).find(
-          (activeCall) => activeCall.subagentNodeId === subagentMeta.nodeId
-        );
-        callId = activeCallForTool?.callId ?? getSyntheticCallId(toolName);
-      }
-
-      const startEvent = activeSubagentCalls.get(callId);
       const event: AgentRuntimeEvent = {
         type: 'subagent_call_end',
         parentNodeId: rootNodeId,
-        subagentNodeId: startEvent?.subagentNodeId ?? subagentMeta.nodeId,
+        subagentNodeId: resolvedSubagentNodeId,
         subagentName: startEvent?.subagentName ?? subagentMeta.agentName,
         callId,
         parentCallId: startEvent?.parentCallId,
@@ -421,6 +487,21 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
 
       emitRuntimeEvent(options, event);
       activeSubagentCalls.delete(callId);
+    };
+
+    registry.agentsByNodeId.forEach((registeredAgent, registeredNodeId) => {
+      registeredAgent.on('agent_start', (context) => {
+        handleAgentStart(registeredNodeId, context);
+      });
+      registeredAgent.on('agent_end', (context) => {
+        handleAgentEnd(context);
+      });
+      registeredAgent.on('agent_tool_start', (context, tool, details) => {
+        handleAgentToolStart(registeredNodeId, context, tool, details);
+      });
+      registeredAgent.on('agent_tool_end', (_context, tool, _result, details) => {
+        handleAgentToolEnd(tool, details);
+      });
     });
 
     try {
@@ -438,6 +519,7 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
         });
       });
       activeSubagentCalls.clear();
+      activeSubagentCallIdsByNodeId.clear();
       throw error instanceof Error ? error : new Error(message);
     }
   }

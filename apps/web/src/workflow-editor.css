@@ -885,6 +885,12 @@ path.connection-line.active {
     gap: var(--UI-Spacing-spacing-xs);
 }
 
+.chat-subagent-summary {
+    margin-top: var(--UI-Spacing-spacing-s);
+    color: var(--Colors-Text-Body-Medium);
+    font-size: var(--Fonts-Body-Default-xxs);
+}
+
 .chat-subagent-item {
     border: 1px solid var(--Colors-Stroke-Default);
     border-radius: var(--UI-Radius-radius-xs);
@@ -912,10 +918,40 @@ path.connection-line.active {
     min-height: 22px;
 }
 
+.chat-subagent-main {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--UI-Spacing-spacing-xxs);
+    min-width: 0;
+}
+
+.chat-subagent-toggle {
+    border: 0;
+    background: transparent;
+    color: var(--Colors-Text-Body-Medium);
+    width: 14px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0;
+    cursor: pointer;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.chat-subagent-toggle:disabled {
+    cursor: default;
+    opacity: 0;
+}
+
 .chat-subagent-name {
     color: var(--Colors-Text-Body-Strong);
     font-size: var(--Fonts-Body-Default-xxs);
     font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .chat-subagent-status {
@@ -967,6 +1003,10 @@ path.connection-line.active {
     display: flex;
     flex-direction: column;
     gap: var(--UI-Spacing-spacing-xs);
+}
+
+.chat-subagent-item.collapsed > .chat-subagent-children {
+    display: none;
 }
 
 .chat-message > div {

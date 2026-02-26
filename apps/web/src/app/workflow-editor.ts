@@ -97,6 +97,8 @@ type SubagentRuntimeLogPayload = {
     message?: string;
 };
 
+type SubagentCallStatus = 'running' | 'completed' | 'failed';
+
 type DropdownItem = {
     value: string;
     label: string;
@@ -227,6 +229,8 @@ export class WorkflowEditor {
 
     private spinnerSubagentCallIds: Map<string, Set<string>>;
 
+    private subagentCallStatuses: Map<string, SubagentCallStatus>;
+
     private currentPrompt: string;
 
     private pendingApprovalRequest: ApprovalRequest | null;
@@ -341,6 +345,7 @@ export class WorkflowEditor {
         this.subagentCallElements = new Map<string, HTMLElement>();
         this.subagentCallSpinnerKeys = new Map<string, string>();
         this.spinnerSubagentCallIds = new Map<string, Set<string>>();
+        this.subagentCallStatuses = new Map<string, SubagentCallStatus>();
         this.currentPrompt = '';
         this.pendingApprovalRequest = null;
         this.activeRunController = null;
@@ -1152,6 +1157,7 @@ export class WorkflowEditor {
                 callIds.forEach((callId) => {
                     this.subagentCallElements.delete(callId);
                     this.subagentCallSpinnerKeys.delete(callId);
+                    this.subagentCallStatuses.delete(callId);
                 });
             }
             this.spinnerSubagentCallIds.delete(spinnerKey);
@@ -1161,6 +1167,7 @@ export class WorkflowEditor {
         this.subagentCallElements.clear();
         this.subagentCallSpinnerKeys.clear();
         this.spinnerSubagentCallIds.clear();
+        this.subagentCallStatuses.clear();
     }
 
     showAgentSpinner(name?: string, nodeId?: string) {
@@ -2798,6 +2805,79 @@ export class WorkflowEditor {
         return created;
     }
 
+    ensureSpinnerSubagentSummary(spinner: HTMLElement): HTMLElement {
+        const existing = spinner.querySelector('.chat-subagent-summary');
+        if (existing instanceof HTMLElement) {
+            return existing;
+        }
+
+        const list = this.ensureSpinnerSubagentList(spinner);
+        const created = document.createElement('div');
+        created.className = 'chat-subagent-summary';
+        spinner.insertBefore(created, list);
+        return created;
+    }
+
+    updateSubagentToggleState(item: HTMLElement): void {
+        const toggle = item.querySelector('.chat-subagent-toggle');
+        if (!(toggle instanceof HTMLButtonElement)) return;
+
+        const hasChildren = item.classList.contains('has-children');
+        if (!hasChildren) {
+            toggle.hidden = true;
+            toggle.disabled = true;
+            toggle.textContent = '';
+            toggle.removeAttribute('aria-label');
+            return;
+        }
+
+        const isCollapsed = item.classList.contains('collapsed');
+        toggle.hidden = false;
+        toggle.disabled = false;
+        toggle.textContent = isCollapsed ? '▸' : '▾';
+        toggle.setAttribute('aria-label', isCollapsed ? 'Expand nested subagents' : 'Collapse nested subagents');
+    }
+
+    markSubagentItemHasChildren(callId: string): void {
+        const parentItem = this.subagentCallElements.get(callId);
+        if (!parentItem) return;
+        parentItem.classList.add('has-children');
+        parentItem.classList.remove('collapsed');
+        this.updateSubagentToggleState(parentItem);
+    }
+
+    updateSpinnerSubagentSummary(spinnerKey: string): void {
+        const spinner = this.pendingAgentMessages.get(spinnerKey);
+        if (!spinner) return;
+
+        const callIds = this.spinnerSubagentCallIds.get(spinnerKey);
+        if (!callIds || callIds.size === 0) {
+            const existing = spinner.querySelector('.chat-subagent-summary');
+            if (existing instanceof HTMLElement) {
+                existing.remove();
+            }
+            return;
+        }
+
+        let running = 0;
+        let completed = 0;
+        let failed = 0;
+
+        callIds.forEach((callId) => {
+            const status = this.subagentCallStatuses.get(callId);
+            if (status === 'running') running += 1;
+            else if (status === 'completed') completed += 1;
+            else if (status === 'failed') failed += 1;
+        });
+
+        const summary = this.ensureSpinnerSubagentSummary(spinner);
+        const parts = [`${running} running`, `${completed} done`];
+        if (failed > 0) {
+            parts.push(`${failed} failed`);
+        }
+        summary.textContent = `Subagents: ${parts.join(' · ')}`;
+    }
+
     ensureSubagentCallItem(spinnerKey: string, payload: SubagentRuntimeLogPayload): HTMLElement | null {
         const existing = this.subagentCallElements.get(payload.callId);
         if (existing) {
@@ -2816,13 +2896,26 @@ export class WorkflowEditor {
 
         const row = document.createElement('div');
         row.className = 'chat-subagent-row';
+        const main = document.createElement('div');
+        main.className = 'chat-subagent-main';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'chat-subagent-toggle';
+        toggle.hidden = true;
+        toggle.disabled = true;
+        toggle.addEventListener('click', (event) => {
+            event.preventDefault();
+            item.classList.toggle('collapsed');
+            this.updateSubagentToggleState(item);
+        });
         const name = document.createElement('span');
         name.className = 'chat-subagent-name';
         name.textContent = payload.subagentName;
+        main.appendChild(toggle);
+        main.appendChild(name);
         const status = document.createElement('span');
         status.className = 'chat-subagent-status';
-        status.textContent = 'Running...';
-        row.appendChild(name);
+        row.appendChild(main);
         row.appendChild(status);
         item.appendChild(row);
 
@@ -2831,12 +2924,16 @@ export class WorkflowEditor {
         item.appendChild(children);
 
         const parentContainer = payload.parentCallId
-            ? this.subagentCallElements.get(payload.parentCallId)?.querySelector('.chat-subagent-children')
+            ? (() => {
+                this.markSubagentItemHasChildren(payload.parentCallId);
+                return this.subagentCallElements.get(payload.parentCallId)?.querySelector('.chat-subagent-children');
+            })()
             : null;
         const hostContainer = parentContainer instanceof HTMLElement
             ? parentContainer
             : this.ensureSpinnerSubagentList(spinner);
         hostContainer.appendChild(item);
+        this.updateSubagentToggleState(item);
 
         this.subagentCallElements.set(payload.callId, item);
         this.subagentCallSpinnerKeys.set(payload.callId, spinnerKey);
@@ -2848,11 +2945,12 @@ export class WorkflowEditor {
 
     setSubagentCallItemStatus(
         callId: string,
-        statusClass: 'running' | 'completed' | 'failed',
+        statusClass: SubagentCallStatus,
         message?: string
     ): void {
         const item = this.subagentCallElements.get(callId);
         if (!item) return;
+        this.subagentCallStatuses.set(callId, statusClass);
         item.classList.remove('running', 'completed', 'failed');
         item.classList.add(statusClass);
         const statusEl = item.querySelector('.chat-subagent-status');
@@ -2901,11 +2999,13 @@ export class WorkflowEditor {
             if (item) {
                 this.setSubagentCallItemStatus(payload.callId, 'running');
             }
+            this.updateSpinnerSubagentSummary(spinnerKey);
             return;
         }
 
         const mappedStatus = entry.type === 'subagent_call_error' ? 'failed' : 'completed';
         this.setSubagentCallItemStatus(payload.callId, mappedStatus, payload.message);
+        this.updateSpinnerSubagentSummary(spinnerKey);
     }
 
     onLogEntry(entry: any) {
