@@ -2247,14 +2247,14 @@ export class WorkflowEditor {
 
         } else if (node.type === 'approval') {
             container.appendChild(buildLabel('Approval Message'));
-            const pInput = document.createElement('input');
-            pInput.type = 'text';
-            pInput.className = 'input';
+            const pInput = document.createElement('textarea');
+            pInput.className = 'input textarea-input';
+            pInput.rows = 4;
             pInput.value = data.prompt || '';
             pInput.placeholder = 'Message shown to user when approval is required';
             pInput.addEventListener('input', (e: any) => {
                 data.prompt = e.target.value;
-                this.scheduleSave();
+                this.updatePreview(node);
             });
             container.appendChild(pInput);
 
