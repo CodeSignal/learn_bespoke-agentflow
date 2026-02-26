@@ -260,25 +260,17 @@ export class WorkflowEngine {
   }
 
   private normalizeGraph(graph: WorkflowGraph): WorkflowGraph {
-    const removedNodeIds = new Set<string>();
     const nodes = Array.isArray(graph.nodes)
-      ? graph.nodes.flatMap((node) => {
-          const normalizedNode = node.type === 'input' ? { ...node, type: 'approval' } : node;
-          if (normalizedNode.type === 'end') {
-            removedNodeIds.add(normalizedNode.id);
-            return [];
+      ? graph.nodes.map((node) => {
+          if (node.type === 'input') {
+            return { ...node, type: 'approval' };
           }
-          return [normalizedNode];
+          return node;
         })
       : [];
     return {
       nodes,
-      connections: Array.isArray(graph.connections)
-        ? graph.connections.filter(
-            (connection) =>
-              !removedNodeIds.has(connection.source) && !removedNodeIds.has(connection.target)
-          )
-        : []
+      connections: Array.isArray(graph.connections) ? graph.connections : []
     };
   }
 
