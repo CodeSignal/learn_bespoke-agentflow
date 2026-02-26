@@ -2307,13 +2307,14 @@ export class WorkflowEditor {
                     node.id,
                     SUBAGENT_TARGET_HANDLE,
                     'port-subagent-target',
-                    'Subagent target'
+                    'Set as subagent'
                 )
             );
         }
 
         if (node.type !== 'start') {
-            const portIn = this.createPort(node.id, 'input', 'port-in', '', this.getNodeHeaderPortTop(node));
+            const inputTooltip = node.type === 'end' ? 'End input' : 'Input';
+            const portIn = this.createPort(node.id, 'input', 'port-in', inputTooltip, this.getNodeHeaderPortTop(node));
             el.appendChild(portIn);
         }
 
@@ -2321,38 +2322,34 @@ export class WorkflowEditor {
             if (node.type === 'if') {
                 const conditions = this.getIfConditions(node);
                 if (this.shouldAggregateCollapsedIfPorts(node)) {
-                    const title = `${conditions.length} condition branches (expand to wire specific branches)`;
                     const aggregateConditionPort = this.createPort(
                         node.id,
                         this.getIfConditionHandle(0),
                         'port-out port-condition port-condition-aggregate',
-                        title,
+                        'Expand to connect',
                         this.getNodeHeaderCenterYOffset(node) - AGGREGATE_PORT_RADIUS,
                         false
                     );
                     aggregateConditionPort.textContent = String(conditions.length);
-                    aggregateConditionPort.setAttribute('aria-label', `${conditions.length} conditions`);
+                    aggregateConditionPort.setAttribute('aria-label', 'Expand to connect');
                     el.appendChild(aggregateConditionPort);
                     el.appendChild(
                         this.createPort(
                             node.id,
                             IF_FALLBACK_HANDLE,
                             'port-out port-condition-fallback',
-                            'False fallback',
+                            'Fallback path',
                             this.getNodeSecondaryPortTop(node)
                         )
                     );
                 } else {
-                    conditions.forEach((condition: any, index: any) => {
-                        const operatorLabel = condition.operator === 'contains' ? 'Contains' : 'Equal';
-                        const conditionValue = condition.value || '';
-                        const title = `Condition ${index + 1}: ${operatorLabel} "${conditionValue}"`;
+                    conditions.forEach((_condition: any, index: any) => {
                         el.appendChild(
                             this.createPort(
                                 node.id,
                                 this.getIfConditionHandle(index),
                                 'port-out port-condition',
-                                title,
+                                `Condition ${index + 1}`,
                                 this.getIfConditionPortTop(node, index)
                             )
                         );
@@ -2362,20 +2359,20 @@ export class WorkflowEditor {
                             node.id,
                             IF_FALLBACK_HANDLE,
                             'port-out port-condition-fallback',
-                            'False fallback',
+                            'Fallback path',
                             this.getIfFallbackPortTop(node)
                         )
                     );
                 }
             } else if (node.type === 'agent') {
-                el.appendChild(this.createPort(node.id, 'output', 'port-out', '', this.getNodeHeaderPortTop(node)));
+                el.appendChild(this.createPort(node.id, 'output', 'port-out', 'Output', this.getNodeHeaderPortTop(node)));
                 if (node.data?.tools?.subagents) {
                     el.appendChild(
                         this.createPort(
                             node.id,
                             SUBAGENT_HANDLE,
                             'port-subagent',
-                            'Subagent'
+                            'Add subagent'
                         )
                     );
                 }
@@ -2385,7 +2382,7 @@ export class WorkflowEditor {
                         node.id,
                         'approve',
                         'port-out port-true',
-                        'Approve',
+                        'Approve path',
                         this.getNodeHeaderPortTop(node)
                     )
                 );
@@ -2394,12 +2391,13 @@ export class WorkflowEditor {
                         node.id,
                         'reject',
                         'port-out port-false',
-                        'Reject',
+                        'Reject path',
                         this.getNodeSecondaryPortTop(node)
                     )
                 );
             } else {
-                el.appendChild(this.createPort(node.id, 'output', 'port-out', '', this.getNodeHeaderPortTop(node)));
+                const outputTooltip = node.type === 'start' ? 'Next step' : 'Output';
+                el.appendChild(this.createPort(node.id, 'output', 'port-out', outputTooltip, this.getNodeHeaderPortTop(node)));
             }
         }
     }
@@ -2414,7 +2412,11 @@ export class WorkflowEditor {
     ): HTMLDivElement {
         const port = document.createElement('div');
         port.className = `port ${className}${connectable ? '' : ' port-disabled'}`;
-        if (title) port.title = title;
+        if (title) {
+            port.title = title;
+            port.setAttribute('data-tooltip', title);
+            port.setAttribute('aria-label', title);
+        }
         if (typeof top === 'number') {
             port.style.top = `${top}px`;
         }

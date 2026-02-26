@@ -530,6 +530,101 @@ path.connection-line.active {
     transform: none;
 }
 
+.port[data-tooltip]:hover::after,
+.port[data-tooltip]:focus-visible::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 50%;
+    left: auto;
+    right: calc(100% + var(--UI-Spacing-spacing-s));
+    transform: translateY(-50%);
+    width: max-content;
+    max-width: 220px;
+    padding: var(--UI-Spacing-spacing-xs) var(--UI-Spacing-spacing-s);
+    border-radius: var(--UI-Radius-radius-xs);
+    border: 1px solid var(--Colors-Stroke-Strong);
+    background: var(--Colors-Backgrounds-Main-Top);
+    color: var(--Colors-Text-Body-Strong);
+    font-size: var(--Fonts-Body-Default-xxs);
+    line-height: 1.3;
+    white-space: nowrap;
+    z-index: 120;
+    box-shadow: 0 3px 2px 0 var(--Colors-Shadow-Card);
+    pointer-events: none;
+}
+
+.port[data-tooltip]:hover::before,
+.port[data-tooltip]:focus-visible::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: auto;
+    right: calc(100% + var(--UI-Spacing-spacing-xxs));
+    transform: translateY(-50%);
+    border-top: 6px solid transparent;
+    border-bottom: 6px solid transparent;
+    border-right: none;
+    border-left: 6px solid var(--Colors-Backgrounds-Main-Top);
+    z-index: 121;
+    pointer-events: none;
+}
+
+.port-out[data-tooltip]:hover::after,
+.port-out[data-tooltip]:focus-visible::after {
+    left: calc(100% + var(--UI-Spacing-spacing-s));
+    right: auto;
+}
+
+.port-out[data-tooltip]:hover::before,
+.port-out[data-tooltip]:focus-visible::before {
+    left: calc(100% + var(--UI-Spacing-spacing-xxs));
+    right: auto;
+    border-right: 6px solid var(--Colors-Backgrounds-Main-Top);
+    border-left: none;
+}
+
+.port-subagent-target[data-tooltip]:hover::after,
+.port-subagent-target[data-tooltip]:focus-visible::after {
+    top: auto;
+    left: 50%;
+    right: auto;
+    bottom: calc(100% + var(--UI-Spacing-spacing-s));
+    transform: translateX(-50%);
+}
+
+.port-subagent-target[data-tooltip]:hover::before,
+.port-subagent-target[data-tooltip]:focus-visible::before {
+    top: auto;
+    left: 50%;
+    right: auto;
+    bottom: calc(100% + var(--UI-Spacing-spacing-xxs));
+    transform: translateX(-50%);
+    border-top: none;
+    border-bottom: 6px solid var(--Colors-Backgrounds-Main-Top);
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+}
+
+.port-subagent[data-tooltip]:hover::after,
+.port-subagent[data-tooltip]:focus-visible::after {
+    top: calc(100% + var(--UI-Spacing-spacing-s));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+}
+
+.port-subagent[data-tooltip]:hover::before,
+.port-subagent[data-tooltip]:focus-visible::before {
+    top: calc(100% + var(--UI-Spacing-spacing-xxs));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    border-top: 6px solid var(--Colors-Backgrounds-Main-Top);
+    border-bottom: none;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+}
+
 .port-in { left: -8px; }
 .port-out { right: -8px; }
 .port-true { top: 45px; border-color: var(--Colors-Alert-Success-Default); }
