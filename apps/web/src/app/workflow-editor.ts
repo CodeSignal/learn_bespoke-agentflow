@@ -1598,8 +1598,8 @@ export class WorkflowEditor {
         }
     }
 
-    static get STORAGE_KEY() { return 'agentic-workflow'; }
-    static get RUN_KEY() { return 'agentic-run-id'; }
+    static get STORAGE_KEY() { return 'agentflow-workflow'; }
+    static get RUN_KEY() { return 'agentflow-run-id'; }
 
     saveWorkflowState() {
         try {

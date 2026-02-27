@@ -3,53 +3,72 @@ export const helpContent = `
   <strong>Contents</strong>
   <ul>
     <li><a href="#overview">Overview</a></li>
-    <li><a href="#getting-started">Getting Started</a></li>
-    <li><a href="#features">Key Features</a></li>
-    <li><a href="#workflow">Workflow</a></li>
-    <li><a href="#faq">FAQ</a></li>
+    <li><a href="#build">Build a Workflow</a></li>
+    <li><a href="#nodes">Node Guide</a></li>
+    <li><a href="#run">Run and Review</a></li>
+    <li><a href="#tips">Helpful Tips</a></li>
+    <li><a href="#troubleshooting">Common Issues</a></li>
   </ul>
 </nav>
 
 <section id="overview">
   <h2>Overview</h2>
-  <p>The Agentic Workflow Builder lets you compose agent flows with Start, Agent, Condition, and Approval nodes. Drag nodes, connect them, configure prompts, and run against the server-side workflow engine.</p>
+  <p>AgentFlow helps you design step-by-step AI workflows visually. Add nodes, connect them, run the flow, and review each response in the Run Console.</p>
 </section>
 
-<section id="getting-started">
-  <h2>Getting Started</h2>
+<section id="build">
+  <h2>Build a Workflow</h2>
   <ol>
-    <li>Drag a <strong>Start</strong> node (auto-added) and at least one <strong>Agent</strong> node onto the canvas.</li>
-    <li>Connect nodes by dragging from an output port to an input port.</li>
-    <li>Open node settings (gear icon) to configure prompts, models, and approvals.</li>
-    <li>Enter the initial user prompt in the Run Console and click <strong>Run Workflow</strong>.</li>
+    <li>Keep one <strong>Start</strong> node as your entry point.</li>
+    <li>Add nodes from the left palette and connect them in order.</li>
+    <li>Open each node to fill in prompts or rules.</li>
+    <li>Enter your Initial Prompt and click <strong>Run Workflow</strong>.</li>
   </ol>
 </section>
 
-<section id="features">
-  <h2>Key Features</h2>
-  <h3>Visual Canvas</h3>
-  <p>Pannable/zoomable canvas with SVG connections, floating palette, and snap-friendly controls.</p>
-  <h3>Inline Node Editing</h3>
-  <p>Expand a node to edit prompts, branching conditions, approval text, and tool toggles.</p>
-  <h3>Run Console</h3>
-  <p>Chat-style log with status indicator, agent spinner, and approval prompts when workflows pause for review.</p>
+<section id="nodes">
+  <h2>Node Guide</h2>
+  <ul>
+    <li><strong>Start</strong>: Begins the workflow with your initial input.</li>
+    <li><strong>Agent</strong>: Generates a response based on your prompt and settings.</li>
+    <li><strong>Condition</strong>: Sends the flow down different paths based on match rules.</li>
+    <li><strong>Approval</strong>: Pauses the flow so you can choose Approve or Reject.</li>
+  </ul>
 </section>
 
-<section id="workflow">
-  <h2>Workflow</h2>
-  <ol>
-    <li><strong>Design:</strong> Add nodes, wire edges, and double-check that the Start node connects to your flow.</li>
-    <li><strong>Configure:</strong> Provide model settings, prompts, and optional tools per agent node.</li>
-    <li><strong>Run:</strong> Click Run Workflow. The console streams logs from the server.</li>
-    <li><strong>Approve:</strong> When approval nodes are reached, respond with Approve or Reject to continue.</li>
-  </ol>
+<section id="run">
+  <h2>Run and Review</h2>
+  <p>While running, results appear in real time in the Run Console.</p>
+  <ul>
+    <li>Agent replies appear as they complete.</li>
+    <li>If an Approval node is reached, the flow pauses until you decide.</li>
+    <li>You can cancel a running flow at any time with the cancel button.</li>
+  </ul>
 </section>
 
-<section id="faq">
-  <h2>FAQ</h2>
+<section id="tips">
+  <h2>Helpful Tips</h2>
+  <ul>
+    <li>Start simple: <strong>Start → Agent</strong>, then add branching.</li>
+    <li>Give each Agent a clear role in its system prompt.</li>
+    <li>Use Condition nodes to control routing explicitly.</li>
+    <li>If you refresh during a run, AgentFlow will try to recover it automatically.</li>
+  </ul>
+</section>
+
+<section id="troubleshooting">
+  <h2>Common Issues</h2>
   <details>
-    <summary>Why does a workflow pause?</summary>
-    <p>Approval nodes intentionally pause execution until you make a decision in the Run Console.</p>
+    <summary>Run button is disabled</summary>
+    <p>Make sure your Start node is connected, links are valid, and branch nodes (Condition/Approval) have at least one outgoing path.</p>
+  </details>
+  <details>
+    <summary>Flow pauses and does not continue</summary>
+    <p>An Approval node is waiting for your decision. Click Approve or Reject in the Run Console.</p>
+  </details>
+  <details>
+    <summary>Run did not recover after refresh</summary>
+    <p>If recovery is not available, run the workflow again from the canvas.</p>
   </details>
 </section>
 `;

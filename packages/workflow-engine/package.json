@@ -14,9 +14,7 @@
     "test": "npm run typecheck",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
-  "license": "MIT",
   "dependencies": {
     "@agentic/types": "file:../types"
   }
 }
-
