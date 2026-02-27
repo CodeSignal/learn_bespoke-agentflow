@@ -1,9 +1,8 @@
 {
-  "name": "learn_agentic-workflows",
+  "name": "agentflow",
   "version": "1.0.0",
   "private": true,
-  "description": "Agentic Workflow Builder monorepo (web + server + shared packages)",
-  "license": "MIT",
+  "description": "AgentFlow monorepo (web + server + shared packages)",
   "workspaces": [
     "apps/*",
     "packages/*"
