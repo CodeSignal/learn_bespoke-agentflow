@@ -36,9 +36,9 @@ Fix:
 
 ## Resume returns `409` conflict
 
-Cause: same run is being resumed concurrently (`/resume` and `/resume-stream` lock conflict).
+Cause: same run is being resumed concurrently (`/api/resume` and `/api/resume-stream` lock conflict).
 
-Fix: resume from only one client path at a time.
+Fix: resume from only one `/api` client path at a time.
 
 ## `default-workflow.json` not loading
 

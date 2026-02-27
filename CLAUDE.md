@@ -7,6 +7,7 @@ This file provides guidance to Claude Code when working in this repository.
 AgentFlow is a visual workflow editor and runtime for LLM pipelines.
 
 Users compose workflows with `Start`, `Agent`, `Condition`, and `Approval` nodes, then execute server-side with persisted run records.
+In the UI, `Condition` maps to runtime node type `"if"` in workflow JSON and persisted run records.
 
 ## Monorepo Layout
 

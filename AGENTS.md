@@ -70,9 +70,9 @@ Server routes:
 
 ## Subagent Graph Rules
 
-- Subagent links are tool-delegation edges, not execution edges.
-- Subagent hierarchies must remain acyclic.
-- Subagent targets are tool-only and cannot participate in regular execution edges.
+- Links between agents and subagents are tool-delegation edges, not execution edges.
+- Hierarchies of subagents must remain acyclic.
+- Targets of subagent links are tool-only and cannot participate in regular execution edges.
 
 ## Additional Documentation
 
