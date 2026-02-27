@@ -339,8 +339,6 @@ export class WorkflowEngine {
           this.waitingForInput = true;
           this.log(node.id, 'wait_input', 'Waiting for user approval');
           return undefined;
-        case 'end':
-          return undefined;
         default:
           this.log(node.id, 'warn', `Unknown node type "${node.type}" skipped`);
       }
@@ -456,8 +454,6 @@ export class WorkflowEngine {
         return 'condition node';
       case 'approval':
         return 'approval node';
-      case 'end':
-        return 'end node';
       default:
         return `${node.type} node`;
     }

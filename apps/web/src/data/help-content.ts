@@ -12,7 +12,7 @@ export const helpContent = `
 
 <section id="overview">
   <h2>Overview</h2>
-  <p>The Agentic Workflow Builder lets you compose agent flows with Start, Agent, Condition, Approval, and End nodes. Drag nodes, connect them, configure prompts, and run against the server-side workflow engine.</p>
+  <p>The Agentic Workflow Builder lets you compose agent flows with Start, Agent, Condition, and Approval nodes. Drag nodes, connect them, configure prompts, and run against the server-side workflow engine.</p>
 </section>
 
 <section id="getting-started">

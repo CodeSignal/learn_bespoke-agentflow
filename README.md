@@ -1,6 +1,6 @@
 # Agentic Workflow Builder
 
-Agentic Workflow Builder is a web app for visually composing, executing, and auditing LLM workflows. Drag Start, Agent, If/Else, Approval, and End nodes onto the canvas, connect them with Bezier edges, configure prompts inline, and run the flow through a server-side engine that records every step for later review.
+Agentic Workflow Builder is a web app for visually composing, executing, and auditing LLM workflows. Drag Start, Agent, If/Else, and Approval nodes onto the canvas, connect them with Bezier edges, configure prompts inline, and run the flow through a server-side engine that records every step for later review.
 
 ## Repository Layout
 

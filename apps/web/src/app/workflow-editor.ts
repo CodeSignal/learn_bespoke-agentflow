@@ -1722,7 +1722,6 @@ export class WorkflowEditor {
             case 'approval': 
                 return { prompt: 'Review and approve this step.', collapsed: true };
             case 'start':
-            case 'end':
                 return { collapsed: true };
             default: 
                 return { collapsed: true };
@@ -1802,7 +1801,7 @@ export class WorkflowEditor {
 
         if (!node.data) node.data = {};
         if (node.data.collapsed === undefined) {
-            node.data.collapsed = node.type === 'start' || node.type === 'end';
+            node.data.collapsed = node.type === 'start';
         }
         const hasSettings = this.nodeHasSettings(node);
         el.classList.toggle('expanded', !node.data.collapsed);
@@ -1954,7 +1953,6 @@ export class WorkflowEditor {
             return `<span class="icon icon-robot icon-primary"></span>${escapeHtml(name)}`;
         }
         if (node.type === 'start') return '<span class="icon icon-lesson-introduction icon-primary"></span>Start';
-        if (node.type === 'end') return '<span class="icon icon-rectangle-2698 icon-primary"></span>End';
         if (node.type === 'if') return '<span class="icon icon-path icon-primary"></span>Condition';
         if (node.type === 'approval') return '<span class="icon icon-chermark-badge icon-primary"></span>User Approval';
         return `<span class="icon icon-primary"></span>${node.type}`;
@@ -2313,13 +2311,11 @@ export class WorkflowEditor {
         }
 
         if (node.type !== 'start') {
-            const inputTooltip = node.type === 'end' ? 'End input' : 'Input';
-            const portIn = this.createPort(node.id, 'input', 'port-in', inputTooltip, this.getNodeHeaderPortTop(node));
+            const portIn = this.createPort(node.id, 'input', 'port-in', 'Input', this.getNodeHeaderPortTop(node));
             el.appendChild(portIn);
         }
 
-        if (node.type !== 'end') {
-            if (node.type === 'if') {
+        if (node.type === 'if') {
                 const conditions = this.getIfConditions(node);
                 if (this.shouldAggregateCollapsedIfPorts(node)) {
                     const aggregateConditionPort = this.createPort(
@@ -2399,7 +2395,6 @@ export class WorkflowEditor {
                 const outputTooltip = node.type === 'start' ? 'Next step' : 'Output';
                 el.appendChild(this.createPort(node.id, 'output', 'port-out', outputTooltip, this.getNodeHeaderPortTop(node)));
             }
-        }
     }
 
     createPort(
