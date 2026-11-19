@@ -210,7 +210,8 @@ export class WorkflowEditor implements EditorHost {
             this.splitPanel = new SplitPanelCtor(mainLayout, {
                 initialSplit: clampedSplit,
                 minLeft: SPLIT_PANEL_MIN_LEFT,
-                minRight: SPLIT_PANEL_MIN_RIGHT
+                minRight: SPLIT_PANEL_MIN_RIGHT,
+                dividerLabel: 'Resize run console'
             });
             this.splitPanel.getLeftPanel().appendChild(this.canvas);
             this.splitPanel.getRightPanel().appendChild(this.rightPanel);

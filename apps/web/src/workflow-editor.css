@@ -216,7 +216,7 @@ body {
 }
 
 .zoom-label .icon {
-    color: var(--Colors-Text-Body-Secondary);
+    color: var(--Colors-Text-Body-Medium);
 }
 
 .zoom-stepper {

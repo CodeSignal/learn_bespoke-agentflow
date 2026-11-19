@@ -26,7 +26,7 @@ export type SplitPanelInstance = {
 
 export type SplitPanelCtor = new (
     container: Element,
-    options: { initialSplit: number; minLeft: number; minRight: number }
+    options: { initialSplit: number; minLeft: number; minRight: number; dividerLabel?: string }
 ) => SplitPanelInstance;
 
 export type ModalInstance = {
