@@ -30,7 +30,15 @@ This project is an npm workspace monorepo for building, running, and reviewing a
 3. Server streams log events and final result.
 4. Server persists updated run record.
 
-A per-run resume lock prevents concurrent resume calls (`409` if duplicated).
+A per-run execution lock prevents a run from being resumed while it is still executing (`409`).
+
+## Cancel
+
+1. Web app calls `POST /api/cancel` with `runId`.
+2. Engine marks the run `cancelled` and aborts in-flight model calls through an `AbortSignal`.
+3. The request that drives the run (if any) persists the record and ends its stream; a paused run is persisted by the cancel request itself.
+
+Closing a stream is not a cancel: reload recovery depends on the run continuing.
 
 ## Batch paths
 
@@ -46,6 +54,8 @@ The workflow engine supports:
 - Approval pause/resume semantics with `waitingForInput` and `currentNodeId`.
 - Subagent tool-delegation edges (`sourceHandle: "subagent"`) separate from execution edges.
 - Deferred downstream execution queues when a pause occurs mid-branch.
+- A step limit per run/resume call (`maxSteps`, default 100) that stops loops which never reach their exit condition.
+- Cancellation, and aborting sibling branches as soon as one branch fails.
 
 ## Subagent Model
 
@@ -71,6 +81,7 @@ At startup, server scans `data/runs/` and rehydrates paused runs into memory whe
 - `waitingForInput === true`
 - `state` exists
 - `currentNodeId` is not null
+- the record was written less than `PAUSED_RUN_TTL_HOURS` ago
 
 This enables resume endpoints to keep working after restart.
 
@@ -93,3 +104,9 @@ Build/type dependencies flow from shared packages to apps:
 3. `apps/server` and `apps/web`
 
 Use `npm run build:packages` before server/app typecheck or build when running targeted commands.
+
+All workspaces are ES modules. The server and packages compile with `module: NodeNext`, so relative imports carry a `.js` extension.
+
+## Security Model
+
+The server has no authentication and is meant to run on a developer or learner machine, serving its own UI. It sends no CORS headers, so pages on other origins cannot start runs with the configured API key. Run and default-workflow graphs are validated structurally (`validateWorkflowGraph`) before use.

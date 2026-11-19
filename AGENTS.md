@@ -19,6 +19,7 @@ Server routes:
 - `POST /api/run` (batch JSON run)
 - `POST /api/resume-stream` (SSE resume, primary)
 - `POST /api/resume` (batch JSON resume)
+- `POST /api/cancel` (stop a running or paused run)
 - `GET /api/run/:runId` (active/persisted run fetch)
 - `GET /api/config` (provider/model config)
 - `GET /api/default-workflow` (optional startup workflow)
@@ -31,8 +32,8 @@ Server routes:
 - `npm run build`: Build server and web app.
 - `npm run build:packages`: Build shared packages.
 - `npm run lint`: Run ESLint.
-- `npm run typecheck`: Typecheck server and web workspaces.
-- `npm test`: Run repo test gate (`workflow-engine` + server typecheck scripts).
+- `npm run typecheck`: Typecheck every workspace.
+- `npm test`: Build shared packages, then run Vitest in the engine, server and web workspaces.
 
 ## Coding Style & Naming Conventions
 
@@ -44,8 +45,9 @@ Server routes:
 
 ## Testing Guidelines
 
-- CI checks in `.github/workflows/pr.yml`: `lint`, `build:packages`, `typecheck`, `build`.
-- Web workspace uses Vitest (`npm --workspace apps/web run test`).
+- CI checks in `.github/workflows/pr.yml`: `lint`, `build:packages`, `typecheck`, `test`, `build`.
+- Every workspace with logic uses Vitest (`npm --workspace <path> run test`). The engine and server suites use a stub LLM; the server's SDK suite runs the real Agents SDK against a scripted model, so no API key is needed.
+- Server and package sources are ES modules compiled with `NodeNext`: relative imports need a `.js` extension.
 - Prefer targeted `*.test.ts` files near changed behavior.
 
 ## Commit & Pull Request Guidelines

@@ -7,6 +7,16 @@
 - Required to execute workflows containing `agent` nodes.
 - When missing, server starts but agent runs are rejected with `503`.
 
+## `WORKFLOW_MAX_STEPS`
+
+- Maximum node executions per run or resume call. Loops are allowed, so this is what stops a loop that never exits.
+- Default: `100`.
+
+## `PAUSED_RUN_TTL_HOURS`
+
+- Paused runs older than this are left on disk but not restored into memory at startup.
+- Default: `24`.
+
 ## `PORT`
 
 - Server port.
@@ -24,6 +34,10 @@
 
 - `production`: server serves built web assets from `apps/web/dist`.
 - any other value: server attaches Vite middleware for development.
+
+## Runtime
+
+- Node.js `>= 20.19`.
 
 ## Config Files
 

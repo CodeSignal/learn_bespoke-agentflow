@@ -25,6 +25,7 @@ In the UI, `Condition` maps to runtime node type `"if"` in workflow JSON and per
 - `POST /api/run`
 - `POST /api/resume-stream`
 - `POST /api/resume`
+- `POST /api/cancel`
 - `GET /api/run/:runId`
 - `GET /api/config`
 - `GET /api/default-workflow`
@@ -41,6 +42,8 @@ npm run typecheck
 npm test
 
 npm --workspace apps/web run test
+npm --workspace apps/server run test
+npm --workspace packages/workflow-engine run test
 ```
 
 ## Architecture Notes
