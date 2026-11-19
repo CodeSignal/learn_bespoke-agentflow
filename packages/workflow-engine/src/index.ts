@@ -8,6 +8,8 @@ import type {
   WorkflowStatus
 } from '@agentic/types';
 
+export * from './validation.js';
+
 /**
  * Configuration for tools available to agents during execution.
  * Agents can enable multiple tools simultaneously by setting their respective boolean flags.
@@ -59,6 +61,8 @@ export interface AgentRuntimeEvent {
 export interface AgentRespondOptions {
   parentNodeId?: string;
   onRuntimeEvent?: (event: AgentRuntimeEvent) => void;
+  /** Aborted when the run is cancelled or another branch has already failed. */
+  signal?: AbortSignal;
 }
 
 export interface WorkflowLLM {
@@ -70,6 +74,12 @@ export interface WorkflowEngineInitOptions {
   llm?: WorkflowLLM;
   timestampFn?: () => string;
   onLog?: (entry: WorkflowLogEntry) => void;
+  /**
+   * Maximum number of node executions per `run()` or `resume()` call. Execution
+   * loops are allowed, so this is what stops a loop whose exit condition never
+   * matches. Defaults to {@link DEFAULT_MAX_STEPS}.
+   */
+  maxSteps?: number;
   /**
    * Restore a previously paused engine to its exact saved state.
    * When provided, the constructor applies this snapshot over the default
@@ -84,7 +94,11 @@ export interface WorkflowEngineInitOptions {
   };
 }
 
+export const DEFAULT_MAX_STEPS = 100;
+const DEFAULT_MODEL = 'gpt-5';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 const DEFAULT_REASONING = 'low';
+const PREVIOUS_OUTPUT_PLACEHOLDER = /\{\{PREVIOUS_OUTPUT\}\}/g;
 const IF_CONDITION_HANDLE_PREFIX = 'condition-';
 const SUBAGENT_HANDLE = 'subagent';
 const APPROVAL_CONTEXTS_STATE_KEY = '__approval_contexts__';
@@ -101,6 +115,21 @@ interface IfCondition {
 interface DeferredNodeExecution {
   nodeId: string;
   previousOutput: unknown;
+}
+
+class AgentCallAbortedError extends Error {
+  constructor() {
+    super('Agent call aborted');
+    this.name = 'AgentCallAbortedError';
+  }
+}
+
+/** An LLM failure that has already been written to the run log. */
+class AgentCallFailedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AgentCallFailedError';
+  }
 }
 
 class MissingLLM implements WorkflowLLM {
@@ -130,9 +159,19 @@ export class WorkflowEngine {
 
   private waitingForInput = false;
 
+  private readonly maxSteps: number;
+
+  private stepCount = 0;
+
+  private abortController = new AbortController();
+
   constructor(graph: WorkflowGraph, options: WorkflowEngineInitOptions = {}) {
     this.graph = this.normalizeGraph(graph);
-    this.runId = options.runId ?? Date.now().toString();
+    this.runId = options.runId ?? globalThis.crypto.randomUUID();
+    this.maxSteps =
+      typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) && options.maxSteps > 0
+        ? Math.floor(options.maxSteps)
+        : DEFAULT_MAX_STEPS;
     this.llm = options.llm ?? new MissingLLM();
     this.timestampFn = options.timestampFn ?? (() => new Date().toISOString());
     this.onLog = options.onLog;
@@ -177,13 +216,45 @@ export class WorkflowEngine {
     this.onLog = onLog;
   }
 
-  async run(): Promise<WorkflowRunResult> {
+  /**
+   * Stops a running or paused run. In-flight LLM calls receive an abort signal
+   * and their results are discarded. Returns `false` if the run already ended.
+   */
+  cancel(): boolean {
+    if (this.status !== 'running' && this.status !== 'paused') {
+      return false;
+    }
+    this.status = 'cancelled';
+    this.waitingForInput = false;
+    this.currentNodeId = null;
+    delete this.state[APPROVAL_CONTEXTS_STATE_KEY];
+    delete this.state[PENDING_APPROVAL_QUEUE_STATE_KEY];
+    delete this.state[DEFERRED_NODE_QUEUE_STATE_KEY];
+    delete this.state.pre_approval_output;
+    this.log('system', 'cancelled', 'Workflow cancelled');
+    this.abortController.abort();
+    return true;
+  }
+
+  private beginExecution(): void {
     this.status = 'running';
     this.waitingForInput = false;
+    this.stepCount = 0;
+    this.abortController = new AbortController();
+  }
+
+  private fail(nodeId: string | null, message: string): void {
+    this.log(nodeId, 'error', message);
+    this.status = 'failed';
+    // Stop sibling branches that are still waiting on the model.
+    this.abortController.abort();
+  }
+
+  async run(): Promise<WorkflowRunResult> {
+    this.beginExecution();
     const startNode = this.graph.nodes.find((n) => n.type === 'start');
     if (!startNode) {
-      this.log('system', 'error', 'No start node found in workflow graph');
-      this.status = 'failed';
+      this.fail('system', 'No start node found in workflow graph');
       return this.getResult();
     }
 
@@ -206,13 +277,11 @@ export class WorkflowEngine {
 
     const currentNode = this.graph.nodes.find((n) => n.id === this.currentNodeId);
     if (!currentNode) {
-      this.status = 'failed';
-      this.log(this.currentNodeId, 'error', 'Unable to resume, current node missing');
+      this.fail(this.currentNodeId, 'Unable to resume, current node missing');
       return this.getResult();
     }
 
-    this.waitingForInput = false;
-    this.status = 'running';
+    this.beginExecution();
 
     let previousOutput: unknown = input ?? '';
     let connections: WorkflowConnection[] = [];
@@ -240,10 +309,10 @@ export class WorkflowEngine {
     this.state.previous_output = previousOutput;
 
     await this.processConnections(currentNode.id, connections, previousOutput);
-    if (this.status === 'running') {
+    if (this.getStatus() === 'running') {
       await this.drainDeferredNodes();
     }
-    if (this.status === 'running') {
+    if (this.getStatus() === 'running') {
       const nextPendingApprovalNodeId = this.dequeuePendingApproval();
       if (nextPendingApprovalNodeId) {
         this.currentNodeId = nextPendingApprovalNodeId;
@@ -301,11 +370,26 @@ export class WorkflowEngine {
     writeSharedPreviousOutput = true
   ): Promise<unknown> {
     if (this.status !== 'running') {
-      if (this.status === 'paused' && this.waitingForInput && node.type === 'approval') {
-        this.setApprovalContext(node.id, previousOutput);
-        this.enqueuePendingApproval(node.id);
-        this.log(node.id, 'wait_input', 'Waiting for user approval');
+      if (this.status === 'paused' && this.waitingForInput) {
+        if (node.type === 'approval') {
+          this.setApprovalContext(node.id, previousOutput);
+          this.enqueuePendingApproval(node.id);
+          this.log(node.id, 'wait_input', 'Waiting for user approval');
+        } else {
+          // A sibling branch reached this node after an approval paused the
+          // run. Queue it so it runs on resume instead of being dropped.
+          this.enqueueDeferredNode(node.id, previousOutput);
+        }
       }
+      return undefined;
+    }
+
+    this.stepCount += 1;
+    if (this.stepCount > this.maxSteps) {
+      this.fail(
+        node.id,
+        `Workflow stopped after ${this.maxSteps} steps. A loop probably never reaches its exit condition.`
+      );
       return undefined;
     }
 
@@ -356,17 +440,19 @@ export class WorkflowEngine {
       await this.processConnections(node.id, nextConnections, output, writeSharedPreviousOutput);
       return output;
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const lastLog = this.logs[this.logs.length - 1];
-      const isDuplicateLlmError =
-        lastLog &&
-        lastLog.nodeId === node.id &&
-        lastLog.type === 'llm_error' &&
-        lastLog.content === message;
-      if (!isDuplicateLlmError) {
-        this.log(node.id, 'error', message);
+      // The run was cancelled or a sibling branch already failed: this error is
+      // only the abort of an in-flight call and must not change the outcome.
+      if (this.getStatus() === 'cancelled' || this.getStatus() === 'failed') {
+        return undefined;
       }
-      this.status = 'failed';
+      if (error instanceof AgentCallFailedError) {
+        // Already reported as an `llm_error` log entry.
+        this.status = 'failed';
+        this.abortController.abort();
+        return undefined;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.fail(node.id, message);
       return undefined;
     }
   }
@@ -539,7 +625,9 @@ export class WorkflowEngine {
     const userPrompt = node.data?.userPrompt;
     let userContent: string;
     if (userPrompt && typeof userPrompt === 'string' && userPrompt.trim()) {
-      userContent = userPrompt.replace(/\{\{PREVIOUS_OUTPUT\}\}/g, lastOutputStr);
+      // A replacer function keeps `$&`, `$$` and similar sequences in the previous
+      // output literal instead of treating them as replacement patterns.
+      userContent = userPrompt.replace(PREVIOUS_OUTPUT_PLACEHOLDER, () => lastOutputStr);
     } else {
       // Backwards compatibility: empty userPrompt falls back to last output directly
       userContent = lastOutputStr;
@@ -548,10 +636,9 @@ export class WorkflowEngine {
     this.validateSubagentGraphConstraints();
     const subagents = this.buildSubagentInvocations(node.id, new Set<string>([node.id]));
     const invocation: AgentInvocation = {
-      systemPrompt:
-        (node.data?.systemPrompt as string) || 'You are a helpful assistant.',
+      systemPrompt: (node.data?.systemPrompt as string) || DEFAULT_SYSTEM_PROMPT,
       userContent,
-      model: (node.data?.model as string) || 'gpt-5',
+      model: (node.data?.model as string) || DEFAULT_MODEL,
       reasoningEffort: (node.data?.reasoningEffort as string) || DEFAULT_REASONING,
       tools: node.data?.tools as AgentToolsConfig,
       subagents: subagents.length > 0 ? subagents : undefined
@@ -559,18 +646,29 @@ export class WorkflowEngine {
 
     this.log(node.id, 'start_prompt', invocation.userContent || '');
 
+    const signal = this.abortController.signal;
+    let responseText: string;
     try {
-      const responseText = await this.llm.respond(invocation, {
+      responseText = await this.llm.respond(invocation, {
         parentNodeId: node.id,
-        onRuntimeEvent: (event) => this.logAgentRuntimeEvent(node.id, event)
+        onRuntimeEvent: (event) => {
+          if (!signal.aborted) this.logAgentRuntimeEvent(node.id, event);
+        },
+        signal
       });
-      this.log(node.id, 'llm_response', responseText);
-      return responseText;
     } catch (error) {
+      if (signal.aborted) {
+        throw new AgentCallAbortedError();
+      }
       const message = error instanceof Error ? error.message : String(error);
       this.log(node.id, 'llm_error', message);
-      throw error instanceof Error ? error : new Error(message);
+      throw new AgentCallFailedError(message);
     }
+    if (signal.aborted) {
+      throw new AgentCallAbortedError();
+    }
+    this.log(node.id, 'llm_response', responseText);
+    return responseText;
   }
 
   private isSubagentConnection(connection: WorkflowConnection): boolean {
@@ -707,8 +805,8 @@ export class WorkflowEngine {
       results.push({
         nodeId: targetNode.id,
         agentName: (targetNode.data?.agentName as string) || 'Agent',
-        systemPrompt: (targetNode.data?.systemPrompt as string) || 'You are a helpful assistant.',
-        model: (targetNode.data?.model as string) || 'gpt-5',
+        systemPrompt: (targetNode.data?.systemPrompt as string) || DEFAULT_SYSTEM_PROMPT,
+        model: (targetNode.data?.model as string) || DEFAULT_MODEL,
         reasoningEffort: (targetNode.data?.reasoningEffort as string) || DEFAULT_REASONING,
         tools: targetNode.data?.tools as AgentToolsConfig,
         subagents: nestedSubagents.length > 0 ? nestedSubagents : undefined
@@ -867,7 +965,7 @@ export class WorkflowEngine {
     if (this.status === 'running') {
       return false;
     }
-    if (this.status === 'failed' || this.status === 'completed') {
+    if (this.status === 'failed' || this.status === 'completed' || this.status === 'cancelled') {
       return true;
     }
     if (this.status === 'paused' && !this.waitingForInput) {
