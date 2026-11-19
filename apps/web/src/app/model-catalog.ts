@@ -6,6 +6,8 @@ export interface ModelCatalog {
     options: string[];
     efforts: Record<string, string[]>;
     labels: Record<string, string>;
+    /** Provider display name by model id. */
+    providers: Record<string, string>;
     defaultEfforts: Record<string, string>;
     defaultModel: string;
     aliases: Record<string, string>;
@@ -27,6 +29,7 @@ export function buildModelCatalog(config: AppConfig): ModelCatalog | null {
         options: [],
         efforts: {},
         labels: {},
+        providers: {},
         defaultEfforts: {},
         defaultModel: '',
         aliases: config.modelAliases ?? {}
@@ -36,6 +39,7 @@ export function buildModelCatalog(config: AppConfig): ModelCatalog | null {
             catalog.options.push(model.id);
             catalog.efforts[model.id] = model.reasoningEfforts ?? [];
             catalog.labels[model.id] = model.name || model.id;
+            catalog.providers[model.id] = provider.name || provider.id;
             if (model.defaultReasoningEffort) catalog.defaultEfforts[model.id] = model.defaultReasoningEffort;
         }
     }
@@ -46,6 +50,34 @@ export function buildModelCatalog(config: AppConfig): ModelCatalog | null {
             ? config.defaultModel
             : catalog.options[0];
     return catalog;
+}
+
+export interface ModelPickerItem {
+    value: string;
+    label: string;
+    /** Provider name, set only when models from more than one provider are offered. */
+    group?: string;
+}
+
+/**
+ * Items for the model dropdown, in provider order. With more than one
+ * provider, each item names its provider in `group` and in its label; the
+ * label prefix is a stand-in until the design-system dropdown renders groups.
+ */
+export function buildModelPickerItems(
+    options: string[],
+    labels: Record<string, string>,
+    providers: Record<string, string>
+): ModelPickerItem[] {
+    const providerNames = new Set(options.map((id) => providers[id]).filter(Boolean));
+    const grouped = providerNames.size > 1;
+    return options.map((id) => {
+        const label = labels[id] ?? id;
+        const provider = providers[id];
+        return grouped && provider
+            ? { value: id, label: `${provider} · ${label}`, group: provider }
+            : { value: id, label };
+    });
 }
 
 /**

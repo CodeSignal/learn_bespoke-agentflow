@@ -14,6 +14,8 @@ export type EditorStore = {
     modelEfforts: Record<string, string[]>;
     /** Display names by model id. */
     modelLabels: Record<string, string>;
+    /** Provider display name by model id. */
+    modelProviders: Record<string, string>;
     /** Effort preselected for a model, by model id. */
     modelDefaultEfforts: Record<string, string>;
     /** Model given to new agent nodes. */

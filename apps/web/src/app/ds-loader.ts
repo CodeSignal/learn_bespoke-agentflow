@@ -3,6 +3,8 @@ import type { ConfirmOptions } from './types';
 export type DropdownItem = {
     value: string;
     label: string;
+    /** Group heading for the item. Ignored by design-system versions without group support. */
+    group?: string;
 };
 
 export type DropdownConfig = {

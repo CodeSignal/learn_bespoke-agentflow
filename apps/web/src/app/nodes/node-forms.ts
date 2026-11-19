@@ -1,3 +1,4 @@
+import { buildModelPickerItems } from '../model-catalog';
 import {
     DEFAULT_IF_CONDITION,
     IF_CONDITION_OPERATORS,
@@ -179,7 +180,7 @@ export class NodeForms {
             }
 
             // Model
-            const { modelOptions, modelEfforts, modelLabels, modelDefaultEfforts, defaultModel } = host.store;
+            const { modelOptions, modelEfforts, modelLabels, modelProviders, modelDefaultEfforts, defaultModel } = host.store;
             const currentModel = data.model || defaultModel || modelOptions[0];
             const modelDropdown = document.createElement('div');
             modelDropdown.className = 'ds-dropdown';
@@ -188,7 +189,7 @@ export class NodeForms {
             void this.setupDropdown(
                 container,
                 modelDropdown,
-                modelOptions.map((m) => ({ value: m, label: modelLabels[m] ?? m })),
+                buildModelPickerItems(modelOptions, modelLabels, modelProviders),
                 currentModel,
                 'Select model',
                 (value) => {

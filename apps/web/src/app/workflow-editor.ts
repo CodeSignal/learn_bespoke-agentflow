@@ -124,6 +124,7 @@ export class WorkflowEditor implements EditorHost {
             modelOptions: [...DEFAULT_MODEL_OPTIONS],
             modelEfforts: { ...DEFAULT_MODEL_EFFORTS },
             modelLabels: { ...DEFAULT_MODEL_LABELS },
+            modelProviders: {},
             modelDefaultEfforts: {},
             defaultModel: DEFAULT_MODEL
         };
@@ -632,6 +633,7 @@ export class WorkflowEditor implements EditorHost {
             this.store.modelOptions = catalog.options;
             this.store.modelEfforts = catalog.efforts;
             this.store.modelLabels = catalog.labels;
+            this.store.modelProviders = catalog.providers;
             this.store.modelDefaultEfforts = catalog.defaultEfforts;
             this.store.defaultModel = catalog.defaultModel;
             this.modelAliases = catalog.aliases;

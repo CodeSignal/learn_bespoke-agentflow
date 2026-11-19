@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfig } from '../services/api';
-import { applyModelAliases, buildModelCatalog } from './model-catalog';
+import { applyModelAliases, buildModelCatalog, buildModelPickerItems } from './model-catalog';
 import type { EditorNode } from './types';
 
 const config: AppConfig = {
@@ -31,6 +31,7 @@ describe('buildModelCatalog', () => {
       options: ['gpt-a', 'claude-a'],
       efforts: { 'gpt-a': ['low', 'high'], 'claude-a': ['medium'] },
       labels: { 'gpt-a': 'GPT A', 'claude-a': 'Claude A' },
+      providers: { 'gpt-a': 'OpenAI', 'claude-a': 'Anthropic' },
       defaultEfforts: { 'gpt-a': 'low' },
       defaultModel: 'claude-a',
       aliases: { 'gpt-old': 'gpt-a' }
@@ -64,6 +65,27 @@ describe('buildModelCatalog', () => {
   it('returns null when nothing is configured', () => {
     expect(buildModelCatalog({})).toBeNull();
     expect(buildModelCatalog({ providers: [{ id: 'x', name: 'X', enabled: true, models: [] }] })).toBeNull();
+  });
+});
+
+describe('buildModelPickerItems', () => {
+  const labels = { 'gpt-a': 'GPT A', 'gpt-b': 'GPT B', 'claude-a': 'Claude A' };
+  const providers = { 'gpt-a': 'OpenAI', 'gpt-b': 'OpenAI', 'claude-a': 'Anthropic' };
+
+  it('names the provider on every item when more than one provider is offered', () => {
+    expect(buildModelPickerItems(['gpt-a', 'gpt-b', 'claude-a'], labels, providers)).toEqual([
+      { value: 'gpt-a', label: 'OpenAI · GPT A', group: 'OpenAI' },
+      { value: 'gpt-b', label: 'OpenAI · GPT B', group: 'OpenAI' },
+      { value: 'claude-a', label: 'Anthropic · Claude A', group: 'Anthropic' }
+    ]);
+  });
+
+  it('leaves labels plain with a single provider or unknown providers', () => {
+    expect(buildModelPickerItems(['gpt-a', 'gpt-b'], labels, providers)).toEqual([
+      { value: 'gpt-a', label: 'GPT A' },
+      { value: 'gpt-b', label: 'GPT B' }
+    ]);
+    expect(buildModelPickerItems(['x'], {}, {})).toEqual([{ value: 'x', label: 'x' }]);
   });
 });
 
