@@ -23,8 +23,11 @@ npm install
 2. Configure environment:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+export OPENAI_API_KEY="sk-..."        # OpenAI models
+export ANTHROPIC_API_KEY="sk-ant-..." # Claude models
 ```
+
+Set the key for each provider you want to use. Providers and models are defined in `.config/config.json` (see [Configuration](./docs/configuration.md)).
 
 3. Start integrated dev server:
 

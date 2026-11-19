@@ -80,6 +80,8 @@ export interface WorkflowEngineInitOptions {
    * matches. Defaults to {@link DEFAULT_MAX_STEPS}.
    */
   maxSteps?: number;
+  /** Model for agent nodes that do not name one. Defaults to {@link DEFAULT_MODEL}. */
+  defaultModel?: string;
   /**
    * Restore a previously paused engine to its exact saved state.
    * When provided, the constructor applies this snapshot over the default
@@ -95,7 +97,7 @@ export interface WorkflowEngineInitOptions {
 }
 
 export const DEFAULT_MAX_STEPS = 100;
-const DEFAULT_MODEL = 'gpt-5';
+export const DEFAULT_MODEL = 'gpt-6-luna';
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
 const DEFAULT_REASONING = 'low';
 const PREVIOUS_OUTPUT_PLACEHOLDER = /\{\{PREVIOUS_OUTPUT\}\}/g;
@@ -161,6 +163,8 @@ export class WorkflowEngine {
 
   private readonly maxSteps: number;
 
+  private readonly defaultModel: string;
+
   private stepCount = 0;
 
   private abortController = new AbortController();
@@ -168,6 +172,7 @@ export class WorkflowEngine {
   constructor(graph: WorkflowGraph, options: WorkflowEngineInitOptions = {}) {
     this.graph = this.normalizeGraph(graph);
     this.runId = options.runId ?? globalThis.crypto.randomUUID();
+    this.defaultModel = options.defaultModel?.trim() || DEFAULT_MODEL;
     this.maxSteps =
       typeof options.maxSteps === 'number' && Number.isFinite(options.maxSteps) && options.maxSteps > 0
         ? Math.floor(options.maxSteps)
@@ -638,7 +643,7 @@ export class WorkflowEngine {
     const invocation: AgentInvocation = {
       systemPrompt: (node.data?.systemPrompt as string) || DEFAULT_SYSTEM_PROMPT,
       userContent,
-      model: (node.data?.model as string) || DEFAULT_MODEL,
+      model: (node.data?.model as string) || this.defaultModel,
       reasoningEffort: (node.data?.reasoningEffort as string) || DEFAULT_REASONING,
       tools: node.data?.tools as AgentToolsConfig,
       subagents: subagents.length > 0 ? subagents : undefined
@@ -806,7 +811,7 @@ export class WorkflowEngine {
         nodeId: targetNode.id,
         agentName: (targetNode.data?.agentName as string) || 'Agent',
         systemPrompt: (targetNode.data?.systemPrompt as string) || DEFAULT_SYSTEM_PROMPT,
-        model: (targetNode.data?.model as string) || DEFAULT_MODEL,
+        model: (targetNode.data?.model as string) || this.defaultModel,
         reasoningEffort: (targetNode.data?.reasoningEffort as string) || DEFAULT_REASONING,
         tools: targetNode.data?.tools as AgentToolsConfig,
         subagents: nestedSubagents.length > 0 ? nestedSubagents : undefined

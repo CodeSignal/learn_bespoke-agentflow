@@ -17,6 +17,15 @@ export interface WorkflowRouterOptions {
   runsDir: string;
   projectRoot: string;
   maxSteps?: number;
+  /**
+   * Checks that a graph can run (models configured, provider keys present).
+   * Without it, any graph with an agent node needs `llm` to be set.
+   */
+  preflight?: (graph: WorkflowGraph) => { status: number; error: string } | null;
+  /** Browser-safe provider and model configuration for `GET /config`. */
+  getPublicConfig?: () => unknown;
+  /** Model for agent nodes that do not name one. */
+  getDefaultModel?: () => string | undefined;
   /** Interval between SSE comment lines that keep idle proxies from closing the stream. */
   sseHeartbeatMs?: number;
 }
@@ -98,15 +107,20 @@ export function createWorkflowRouter(options: WorkflowRouterOptions): Router {
       return null;
     }
     const hasAgentNode = validation.graph.nodes.some((node) => node.type === 'agent');
-    if (hasAgentNode && !llm) {
-      res.status(503).json({ error: 'OPENAI_API_KEY is required to run workflows with Agent nodes.' });
+    const failure = options.preflight
+      ? options.preflight(validation.graph)
+      : hasAgentNode && !llm
+        ? { status: 503, error: 'No LLM backend is configured to run workflows with Agent nodes.' }
+        : null;
+    if (failure) {
+      res.status(failure.status).json({ error: failure.error });
       return null;
     }
     return validation.graph;
   };
 
   const startEngine = (graph: WorkflowGraph): WorkflowEngine => {
-    const engine = new WorkflowEngine(graph, { llm, maxSteps });
+    const engine = new WorkflowEngine(graph, { llm, maxSteps, defaultModel: options.getDefaultModel?.() });
     store.add(engine);
     store.tryLock(engine.getRunId());
     return engine;
@@ -316,7 +330,9 @@ export function createWorkflowRouter(options: WorkflowRouterOptions): Router {
 
   router.get('/config', async (_req: Request, res: Response) => {
     try {
-      const appConfig = await readProjectJson('config.json');
+      const appConfig = options.getPublicConfig
+        ? options.getPublicConfig()
+        : await readProjectJson('config.json');
       if (appConfig === undefined) {
         res.status(404).json({ error: 'No config found' });
         return;

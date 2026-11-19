@@ -12,13 +12,20 @@ export const TOOLS_CONFIG: ToolConfig[] = [
     { key: 'subagents', label: 'Subagents', iconClass: 'icon-engineering-manager' }
 ];
 
-export const DEFAULT_MODEL = 'gpt-5';
+// Fallbacks for when `/api/config` cannot be loaded. The real model list
+// comes from `.config/config.json` on the server.
+export const DEFAULT_MODEL = 'gpt-6-luna';
 export const DEFAULT_REASONING_EFFORT = 'low';
-export const DEFAULT_MODEL_OPTIONS = ['gpt-5', 'gpt-5-mini', 'gpt-5.1'];
+export const DEFAULT_MODEL_OPTIONS = ['gpt-6.2-sol', 'gpt-6.1-terra', 'gpt-6-luna'];
 export const DEFAULT_MODEL_EFFORTS: Record<string, string[]> = {
-    'gpt-5': ['low', 'medium', 'high'],
-    'gpt-5-mini': ['low', 'medium', 'high'],
-    'gpt-5.1': ['none', 'low', 'medium', 'high']
+    'gpt-6.2-sol': ['low', 'medium', 'high', 'xhigh', 'max'],
+    'gpt-6.1-terra': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+    'gpt-6-luna': ['none', 'low', 'medium', 'high', 'xhigh', 'max']
+};
+export const DEFAULT_MODEL_LABELS: Record<string, string> = {
+    'gpt-6.2-sol': 'GPT-6.2 Sol',
+    'gpt-6.1-terra': 'GPT-6.1 Terra',
+    'gpt-6-luna': 'GPT-6 Luna'
 };
 
 export const IF_CONDITION_HANDLE_PREFIX = 'condition-';

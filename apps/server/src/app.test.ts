@@ -336,6 +336,45 @@ describe('paused run restore', () => {
   });
 });
 
+describe('provider configuration', () => {
+  it('uses the preflight check, public config and default model it is given', async () => {
+    store = new RunStore();
+    const seenModels: string[] = [];
+    const { app } = createApp({
+      llm: {
+        respond: async (invocation: AgentInvocation) => {
+          seenModels.push(invocation.model);
+          return 'ok';
+        }
+      },
+      runsDir: path.join(tempDir, 'runs'),
+      projectRoot: tempDir,
+      store,
+      preflight: (graph) =>
+        graph.nodes.some((node) => node.data?.model === 'claude-x')
+          ? { status: 503, error: 'ANTHROPIC_API_KEY is required to run Agent nodes that use Anthropic models.' }
+          : null,
+      getPublicConfig: () => ({ defaultModel: 'model-from-config', providers: [] }),
+      getDefaultModel: () => 'model-from-config'
+    });
+    server = await new Promise<Server>((resolve) => {
+      const listening = app.listen(0, '127.0.0.1', () => resolve(listening));
+    });
+    baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+
+    expect(await (await fetch(`${baseUrl}/config`)).json()).toEqual({ defaultModel: 'model-from-config', providers: [] });
+
+    const blocked = await post('/run-stream', {
+      graph: { nodes: [node('start', 'start'), node('a', 'agent', { model: 'claude-x' })], connections: [] }
+    });
+    expect(blocked.status).toBe(503);
+    expect(((await blocked.json()) as { error: string }).error).toMatch(/ANTHROPIC_API_KEY is required/);
+
+    await postJson('/run', { graph: agentGraph });
+    expect(seenModels).toEqual(['model-from-config']);
+  });
+});
+
 describe('project files', () => {
   it('returns 404 when config files are absent and serves them when present', async () => {
     await startServer();

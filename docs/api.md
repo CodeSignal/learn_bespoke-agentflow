@@ -49,7 +49,8 @@ Responses:
 
 - `200`: `WorkflowRunResult` (+ `workflow`)
 - `400`: invalid graph payload; `details` lists each problem (shape, duplicate ids, unknown connection endpoints, size limits)
-- `503`: workflow contains `agent` node but `OPENAI_API_KEY` unavailable
+- `400`: an Agent node names a model that no enabled provider lists
+- `503`: an Agent node uses a provider whose API key is not set
 - `500`: execution failure
 
 ## `POST /api/run-stream`
@@ -76,7 +77,7 @@ Closing the stream does not stop the run. The run keeps executing and can be rea
 Errors:
 
 - `400`: invalid graph payload
-- `503`: missing LLM backend for agent nodes
+- `503`: an Agent node uses a provider whose API key is not set
 
 ## `POST /api/resume`
 
@@ -162,12 +163,12 @@ Responses:
 
 ## `GET /api/config`
 
-Returns provider/model config from `.config/config.json`.
+Returns the browser-safe view of `.config/config.json`: `defaultModel`, `modelAliases`, and for each provider its `id`, `name`, `enabled`, `available` (whether its API key is set) and `models` (`id`, `name`, `reasoningEfforts`, `defaultReasoningEffort`). Key variable names and base URLs are not included.
 
 Responses:
 
 - `200`: app config JSON
-- `404`: config missing
+- `404`: config missing or invalid (the reason is logged by the server)
 - `500`: read/parse failure
 
 ## Persistence and Lifecycle Notes

@@ -1,6 +1,7 @@
 import express, { type Express } from 'express';
 import type { WorkflowLLM } from '@agentflow/workflow-engine';
 import { createWorkflowRouter } from './routes/workflows.js';
+import type { WorkflowRouterOptions } from './routes/workflows.js';
 import { RunStore } from './store/run-store.js';
 
 export interface CreateAppOptions {
@@ -10,6 +11,9 @@ export interface CreateAppOptions {
   maxSteps?: number;
   store?: RunStore;
   sseHeartbeatMs?: number;
+  preflight?: WorkflowRouterOptions['preflight'];
+  getPublicConfig?: WorkflowRouterOptions['getPublicConfig'];
+  getDefaultModel?: WorkflowRouterOptions['getDefaultModel'];
 }
 
 /**
@@ -29,7 +33,10 @@ export function createApp(options: CreateAppOptions): { app: Express; store: Run
       runsDir: options.runsDir,
       projectRoot: options.projectRoot,
       maxSteps: options.maxSteps,
-      sseHeartbeatMs: options.sseHeartbeatMs
+      sseHeartbeatMs: options.sseHeartbeatMs,
+      preflight: options.preflight,
+      getPublicConfig: options.getPublicConfig,
+      getDefaultModel: options.getDefaultModel
     })
   );
   return { app, store };

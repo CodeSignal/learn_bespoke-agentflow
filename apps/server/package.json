@@ -14,6 +14,7 @@
   "dependencies": {
     "@agentflow/types": "file:../../packages/types",
     "@agentflow/workflow-engine": "file:../../packages/workflow-engine",
+    "@anthropic-ai/sdk": "^1.10.0",
     "@openai/agents": "^0.22.0",
     "express": "^5.3.0",
     "zod": "^4.6.7"

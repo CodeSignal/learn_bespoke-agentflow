@@ -15,14 +15,14 @@ import type { EditorNode, WorkflowNodeData } from '../types';
 import type { NodeForms } from './node-forms';
 import { createPortElement, renderPorts } from './ports';
 
-export function getDefaultNodeData(type: string): WorkflowNodeData {
+export function getDefaultNodeData(type: string, defaultModel: string = DEFAULT_MODEL): WorkflowNodeData {
     switch (type) {
         case 'agent':
             return {
                 agentName: 'Agent',
                 systemPrompt: 'You are a helpful assistant.',
                 userPrompt: PREVIOUS_OUTPUT_TEMPLATE,
-                model: DEFAULT_MODEL,
+                model: defaultModel,
                 reasoningEffort: DEFAULT_REASONING_EFFORT,
                 tools: { web_search: false, subagents: false },
                 collapsed: true
@@ -67,12 +67,13 @@ export function getNodeLabel(node: EditorNode): string {
     return `<span class="icon icon-primary"></span>${escapeHtml(String(node.type))}`;
 }
 
-export function getNodePreviewHTML(node: EditorNode): string {
+export function getNodePreviewHTML(node: EditorNode, modelLabels: Record<string, string> = {}): string {
     const data = node.data ?? {};
     let text: string;
     if (node.type === 'agent') {
         const name = (data.agentName || 'Agent').trim();
-        const model = (data.model || DEFAULT_MODEL).toUpperCase();
+        const modelId = data.model || DEFAULT_MODEL;
+        const model = modelLabels[modelId] ?? modelId;
         text = `${escapeHtml(name)} • ${escapeHtml(model)}`;
     } else if (node.type === 'if') {
         const conditions = getIfConditions(node);
@@ -236,7 +237,7 @@ export class NodeView {
         // Preview (Collapsed State)
         const preview = document.createElement('div');
         preview.className = 'node-preview';
-        preview.innerHTML = getNodePreviewHTML(node);
+        preview.innerHTML = getNodePreviewHTML(node, this.host.store.modelLabels);
         el.appendChild(preview);
 
         // Body (Form) - Only visible when expanded
@@ -303,7 +304,7 @@ export class NodeView {
         const el = document.getElementById(node.id);
         if (!el) return;
         const preview = el.querySelector('.node-preview');
-        if (preview) preview.innerHTML = getNodePreviewHTML(node);
+        if (preview) preview.innerHTML = getNodePreviewHTML(node, this.host.store.modelLabels);
         this.host.scheduleSave();
     }
 }

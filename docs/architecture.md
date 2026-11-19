@@ -8,6 +8,7 @@ This project is an npm workspace monorepo for building, running, and reviewing a
 - `apps/web`: Vite SPA workflow editor and run console.
 - `packages/types`: Shared TypeScript contracts used by server, web, and engine.
 - `packages/workflow-engine`: Pure workflow runtime with pluggable LLM adapter.
+- `apps/server/src/llm`: provider configuration, the provider router, and one adapter per provider type.
 - `design-system/`: Git submodule for UI tokens and components.
 - `data/runs/`: Persisted run records (`run_<runId>.json`).
 - `.config/config.json`: Provider/model config served by API.
@@ -56,6 +57,17 @@ The workflow engine supports:
 - Deferred downstream execution queues when a pause occurs mid-branch.
 - A step limit per run/resume call (`maxSteps`, default 100) that stops loops which never reach their exit condition.
 - Cancellation, and aborting sibling branches as soon as one branch fails.
+
+## Providers and Models
+
+`.config/config.json` lists providers and their models. `ProviderRouterLLM` implements the engine's `WorkflowLLM` and sends each agent run to the adapter of the provider that lists its model:
+
+- `OpenAIAdapter`: OpenAI and OpenAI-compatible services, through the OpenAI Agents SDK.
+- `AnthropicAdapter`: Claude models, through the Anthropic SDK's tool runner.
+
+Subagents are function tools owned by the router. When a parent model calls one, the router runs the subagent as its own agent run on whatever provider its model belongs to, and logs the `subagent_call_*` events. Web Search maps to each provider's hosted search tool.
+
+Before a run starts, the server checks that every Agent node names a configured model whose provider has an API key.
 
 ## Subagent Model
 

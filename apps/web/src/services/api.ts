@@ -149,16 +149,22 @@ export type ProviderModel = {
   id: string;
   name: string;
   reasoningEfforts: string[];
+  defaultReasoningEffort?: string;
 };
 
 export type Provider = {
   id: string;
   name: string;
   enabled: boolean;
+  /** False when the server has no API key for this provider. Absent on older servers. */
+  available?: boolean;
   models: ProviderModel[];
 };
 
 export type AppConfig = {
+  defaultModel?: string;
+  /** Maps model ids from older saved workflows to current ones. */
+  modelAliases?: Record<string, string>;
   providers?: Provider[];
 };
 

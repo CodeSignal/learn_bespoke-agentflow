@@ -10,7 +10,8 @@ This repository is an npm workspace monorepo:
 - `packages/workflow-engine`: Reusable workflow runtime.
 - `design-system/`: Git submodule with UI tokens/components.
 - `data/runs/`: Runtime run snapshots (gitignored).
-- `.config/config.json`: Provider/model definitions (committed).
+- `.config/config.json`: Provider/model definitions (committed); schema in `docs/configuration.md`.
+- `apps/server/src/llm`: provider router and adapters (OpenAI Agents SDK, Anthropic SDK).
 - `.config/default-workflow.json`: Optional startup workflow (gitignored).
 
 Server routes:
@@ -60,7 +61,9 @@ Server routes:
 
 ## Security & Configuration Tips
 
-- Set `OPENAI_API_KEY` before running agent workflows.
+- Set the API key of each provider you use (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) before running agent workflows.
+- Providers and models live in `.config/config.json`; keys stay in the environment, named by each provider's `apiKeyEnv`.
+- Do not hard-code model ids in source: add them to `.config/config.json` (and `modelAliases` for retired ids).
 - Never commit secrets, `.env` files, or generated data from `data/runs/`.
 
 ## Design System Policy

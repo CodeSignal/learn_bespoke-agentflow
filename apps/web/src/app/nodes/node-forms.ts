@@ -179,7 +179,8 @@ export class NodeForms {
             }
 
             // Model
-            const { modelOptions, modelEfforts } = host.store;
+            const { modelOptions, modelEfforts, modelLabels, modelDefaultEfforts, defaultModel } = host.store;
+            const currentModel = data.model || defaultModel || modelOptions[0];
             const modelDropdown = document.createElement('div');
             modelDropdown.className = 'ds-dropdown';
             container.appendChild(buildGroupLabel('Model', modelDropdown, 'model'));
@@ -187,8 +188,8 @@ export class NodeForms {
             void this.setupDropdown(
                 container,
                 modelDropdown,
-                modelOptions.map((m) => ({ value: m, label: m.toUpperCase() })),
-                data.model || modelOptions[0],
+                modelOptions.map((m) => ({ value: m, label: modelLabels[m] ?? m })),
+                currentModel,
                 'Select model',
                 (value) => {
                     data.model = value;
@@ -205,14 +206,14 @@ export class NodeForms {
             effortDropdown.className = 'ds-dropdown';
             container.appendChild(buildGroupLabel('Reasoning Effort', effortDropdown, 'effort'));
             container.appendChild(effortDropdown);
-            const efforts = data.model ? modelEfforts[data.model] : undefined;
-            const effortSource = efforts || modelEfforts[modelOptions[0]] || [];
+            const effortSource = modelEfforts[currentModel] ?? [];
             const effortOptions: DropdownItem[] = effortSource.map((optValue: string) => ({
                 value: optValue,
                 label: optValue.charAt(0).toUpperCase() + optValue.slice(1)
             }));
             const selectedEffort =
                 effortOptions.find((o) => o.value === data.reasoningEffort)?.value
+                ?? effortOptions.find((o) => o.value === modelDefaultEfforts[currentModel])?.value
                 ?? effortOptions[0]?.value
                 ?? '';
             if (selectedEffort) {

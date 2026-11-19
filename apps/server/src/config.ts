@@ -14,7 +14,6 @@ export const config = {
   port: Number(process.env.PORT ?? 3000),
   runsDir: path.resolve(PROJECT_ROOT, 'data', 'runs'),
   projectRoot: PROJECT_ROOT,
-  openAiApiKey: process.env.OPENAI_API_KEY ?? '',
   /** Node executions allowed per run or resume before a loop is stopped. */
   maxSteps: Math.floor(positiveNumber(process.env.WORKFLOW_MAX_STEPS, DEFAULT_MAX_STEPS)),
   /** Paused runs older than this are not restored into memory on startup. */

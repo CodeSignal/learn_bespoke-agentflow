@@ -6,13 +6,16 @@
 
 import type { WorkflowConnection } from '@agentflow/types';
 import { fetchConfig } from '../services/api';
+import { applyModelAliases, buildModelCatalog } from './model-catalog';
 import { ConnectionsController } from './canvas/connections';
 import { ViewportController } from './canvas/viewport';
 import { ChatView } from './chat/chat-view';
 import {
     CANVAS_MESSAGE_TIMEOUT_MS,
     COLLAPSED_NODE_FALLBACK_HEIGHT,
+    DEFAULT_MODEL,
     DEFAULT_MODEL_EFFORTS,
+    DEFAULT_MODEL_LABELS,
     DEFAULT_MODEL_OPTIONS,
     DEFAULT_RIGHT_PANEL_WIDTH,
     DUPLICATE_NODE_MIN_WORLD_Y,
@@ -50,6 +53,8 @@ function getErrorMessage(error: unknown): string {
 
 export class WorkflowEditor implements EditorHost {
     readonly store: EditorStore;
+
+    private modelAliases: Record<string, string> = {};
 
     readonly viewport: ViewportController;
 
@@ -117,7 +122,10 @@ export class WorkflowEditor implements EditorHost {
             selectedNodeId: null,
             selectedConnection: null,
             modelOptions: [...DEFAULT_MODEL_OPTIONS],
-            modelEfforts: { ...DEFAULT_MODEL_EFFORTS }
+            modelEfforts: { ...DEFAULT_MODEL_EFFORTS },
+            modelLabels: { ...DEFAULT_MODEL_LABELS },
+            modelDefaultEfforts: {},
+            defaultModel: DEFAULT_MODEL
         };
 
         // DOM Elements
@@ -164,6 +172,7 @@ export class WorkflowEditor implements EditorHost {
         this.addDefaultStartNode();
         this.loadConfig().then(async () => {
             await this.loadInitialWorkflow();
+            this.applyModelAliases();
             this.stateReady = true;
             this.history.reset(this.getGraph());
             this.saveWorkflowState();
@@ -593,7 +602,7 @@ export class WorkflowEditor implements EditorHost {
             type: normalizedType,
             x,
             y,
-            data: getDefaultNodeData(normalizedType)
+            data: getDefaultNodeData(normalizedType, this.store.defaultModel)
         };
         this.store.nodes.push(node);
         this.scheduleSave();
@@ -618,21 +627,22 @@ export class WorkflowEditor implements EditorHost {
 
     private async loadConfig(): Promise<void> {
         try {
-            const cfg = await fetchConfig();
-            const enabledProviders = (cfg.providers ?? []).filter((p) => p.enabled);
-            if (enabledProviders.length === 0) return;
-            const options: string[] = [];
-            const efforts: Record<string, string[]> = {};
-            for (const provider of enabledProviders) {
-                for (const model of provider.models) {
-                    options.push(model.id);
-                    efforts[model.id] = model.reasoningEfforts;
-                }
-            }
-            this.store.modelOptions = options;
-            this.store.modelEfforts = efforts;
+            const catalog = buildModelCatalog(await fetchConfig());
+            if (!catalog) return;
+            this.store.modelOptions = catalog.options;
+            this.store.modelEfforts = catalog.efforts;
+            this.store.modelLabels = catalog.labels;
+            this.store.modelDefaultEfforts = catalog.defaultEfforts;
+            this.store.defaultModel = catalog.defaultModel;
+            this.modelAliases = catalog.aliases;
         } catch {
             // keep hardcoded defaults
+        }
+    }
+
+    private applyModelAliases(): void {
+        if (applyModelAliases(this.store.nodes, this.modelAliases, this.store.modelOptions)) {
+            this.render();
         }
     }
 

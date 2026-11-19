@@ -1,25 +1,46 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import type { WorkflowLLM } from '@agentflow/workflow-engine';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { OpenAIAgentsLLMService } from './services/openai-agents-llm.js';
+import { ConfigError, ConfigStore } from './llm/app-config.js';
+import type { ConfigSnapshot } from './llm/app-config.js';
+import { ProviderRouterLLM } from './llm/router.js';
 import { restorePausedRuns } from './services/restore.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const webRoot = path.resolve(import.meta.dirname, '../../web');
 const webDist = path.join(webRoot, 'dist');
 
-async function bootstrap() {
-  let llmService: WorkflowLLM | undefined;
-  if (config.openAiApiKey) {
-    logger.info('OPENAI_API_KEY detected, enabling live OpenAI Agents SDK backend');
-    llmService = new OpenAIAgentsLLMService();
-  } else {
-    logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
+/** Returns undefined (after logging why) when the configuration cannot be used. */
+function readConfig(store: ConfigStore): ConfigSnapshot | undefined {
+  try {
+    return store.get();
+  } catch (error) {
+    if (!(error instanceof ConfigError)) throw error;
+    logger.warn(error.message);
+    return undefined;
   }
+}
+
+function logProviders(snapshot: ConfigSnapshot): void {
+  for (const provider of snapshot.config.providers) {
+    if (!provider.enabled) continue;
+    if (snapshot.isAvailable(provider)) {
+      logger.info('%s enabled with %d models (%s detected)', provider.name, provider.models.length, provider.apiKeyEnv);
+    } else {
+      logger.warn('%s models are unavailable: %s is not set', provider.name, provider.apiKeyEnv);
+    }
+  }
+  logger.info('Default model: %s', snapshot.defaultModel ?? 'none');
+}
+
+async function bootstrap() {
+  const configStore = ConfigStore.forProject(config.projectRoot);
+  const llmService = new ProviderRouterLLM(() => configStore.get());
+  const snapshot = readConfig(configStore);
+  if (snapshot) logProviders(snapshot);
 
   await fs.promises.mkdir(config.runsDir, { recursive: true });
 
@@ -27,7 +48,10 @@ async function bootstrap() {
     llm: llmService,
     runsDir: config.runsDir,
     projectRoot: config.projectRoot,
-    maxSteps: config.maxSteps
+    maxSteps: config.maxSteps,
+    preflight: (graph) => llmService.preflight(graph),
+    getPublicConfig: () => readConfig(configStore)?.toPublic(),
+    getDefaultModel: () => readConfig(configStore)?.defaultModel
   });
 
   await restorePausedRuns({
@@ -35,6 +59,7 @@ async function bootstrap() {
     store,
     llm: llmService,
     maxSteps: config.maxSteps,
+    defaultModel: snapshot?.defaultModel,
     pausedRunTtlMs: config.pausedRunTtlMs
   });
 

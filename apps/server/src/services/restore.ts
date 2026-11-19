@@ -9,6 +9,7 @@ export interface RestoreOptions {
   store: RunStore;
   llm?: WorkflowLLM;
   maxSteps?: number;
+  defaultModel?: string;
   /** Paused runs whose record is older than this stay on disk but are not restored. */
   pausedRunTtlMs: number;
   now?: () => number;
@@ -49,6 +50,7 @@ export async function restorePausedRuns(options: RestoreOptions): Promise<number
       runId: record.runId,
       llm: options.llm,
       maxSteps: options.maxSteps,
+      defaultModel: options.defaultModel,
       initialState: {
         state: record.state ?? {},
         currentNodeId: record.currentNodeId ?? null,

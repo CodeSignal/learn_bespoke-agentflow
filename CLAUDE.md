@@ -91,10 +91,10 @@ git submodule update --init --recursive
 
 ## Configuration
 
-- `OPENAI_API_KEY`: required for agent-node execution.
+- `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`: key for each provider whose models are used.
 - `PORT`: server port (default `3000`).
 - `PROJECT_ROOT`: optional root override.
-- `.config/config.json`: provider/model config served by API.
+- `.config/config.json`: providers, models, default model and aliases; routes each Agent node to a provider (`apps/server/src/llm`). Schema in `docs/configuration.md`.
 - `.config/default-workflow.json`: optional startup workflow (gitignored).
 
 ## References

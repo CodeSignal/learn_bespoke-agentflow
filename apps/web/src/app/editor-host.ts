@@ -9,8 +9,15 @@ export type EditorStore = {
     nextNodeId: number;
     selectedNodeId: string | null;
     selectedConnection: WorkflowConnection | null;
+    /** Model ids offered in the picker, from every provider that has an API key. */
     modelOptions: string[];
     modelEfforts: Record<string, string[]>;
+    /** Display names by model id. */
+    modelLabels: Record<string, string>;
+    /** Effort preselected for a model, by model id. */
+    modelDefaultEfforts: Record<string, string>;
+    /** Model given to new agent nodes. */
+    defaultModel: string;
 };
 
 /** Pointer and keyboard handlers a port element forwards to. */

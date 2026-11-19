@@ -59,7 +59,8 @@ Run button is disabled when any condition below is true:
 
 Even when UI preflight passes, backend can still reject execution:
 
-- Workflows containing `agent` nodes require `OPENAI_API_KEY`.
+- Every `agent` node must use a model listed in `.config/config.json` (`400` otherwise).
+- The provider of each model used must have its API key set, for example `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` (`503` otherwise).
 - Server can return runtime validation/execution errors.
 - A run that loops past the server's step limit fails with an error.
 
