@@ -87,9 +87,30 @@ body {
     gap: var(--UI-Spacing-spacing-s);
 }
 
-.draggable-node:hover {
+.draggable-node:hover,
+.draggable-node:focus-visible {
     border-color: var(--Colors-Primary-Medium);
     transform: translateX(2px);
+}
+
+.draggable-node:focus-visible,
+.node:focus-visible,
+.port:focus-visible {
+    outline: 2px solid var(--Colors-Primary-Medium);
+    outline-offset: 2px;
+}
+
+/* Content for assistive technology only (for example the reason a button is disabled). */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /* Canvas Area */
@@ -128,17 +149,6 @@ body {
     min-width: 100%;
     min-height: 100%;
     transform-origin: 0 0;
-}
-
-.canvas-hint {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: var(--Colors-Text-Body-Medium);
-    font-size: var(--Fonts-Headlines-sm);
-    pointer-events: none;
-    opacity: 0.3;
 }
 
 .canvas-controls {
@@ -206,7 +216,7 @@ body {
 }
 
 .zoom-label .icon {
-    color: var(--Colors-Text-Body-Secondary);
+    color: var(--Colors-Text-Body-Medium);
 }
 
 .zoom-stepper {
@@ -281,6 +291,18 @@ path.connection-line.editable.connection-line-subagent:hover {
 
 path.connection-line.editable:active {
     cursor: grabbing;
+}
+
+path.connection-line.editable.selected,
+path.connection-line.editable:focus-visible {
+    stroke: var(--Colors-Primary-Medium);
+    stroke-width: 4px;
+    outline: none;
+}
+
+path.connection-line.editable.connection-line-subagent.selected,
+path.connection-line.editable.connection-line-subagent:focus-visible {
+    stroke: color-mix(in srgb, var(--Colors-Alert-Success-Medium) 80%, black);
 }
 
 path.connection-line.reconnecting {
@@ -513,7 +535,8 @@ path.connection-line.active {
     transition: transform 0.1s;
 }
 
-.port:hover {
+.port:hover,
+.port:focus-visible {
     border-color: var(--Colors-Primary-Medium);
     background: var(--Colors-Primary-Lightest);
     transform: scale(1.3);
@@ -627,8 +650,8 @@ path.connection-line.active {
 
 .port-in { left: -8px; }
 .port-out { right: -8px; }
-.port-true { top: 45px; border-color: var(--Colors-Alert-Success-Default); }
-.port-false { top: 75px; border-color: var(--Colors-Alert-Error-Default); }
+.port-true { border-color: var(--Colors-Alert-Success-Default); }
+.port-false { border-color: var(--Colors-Alert-Error-Default); }
 .port-condition { border-color: var(--Colors-Primary-Medium); }
 .port-condition-aggregate {
     width: 16px;

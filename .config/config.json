@@ -1,34 +1,72 @@
 {
+  "defaultModel": "gpt-6-luna",
+  "modelAliases": {
+    "gpt-5": "gpt-6.2-sol",
+    "gpt-5.1": "gpt-6.2-sol",
+    "gpt-5.2": "gpt-6.2-sol",
+    "gpt-5-mini": "gpt-6.1-terra",
+    "gpt-5-nano": "gpt-6-luna"
+  },
   "providers": [
     {
       "id": "openai",
       "name": "OpenAI",
+      "type": "openai",
       "enabled": true,
+      "apiKeyEnv": "OPENAI_API_KEY",
       "models": [
         {
-          "id": "gpt-5",
-          "name": "GPT-5",
-          "reasoningEfforts": ["minimal", "low", "medium", "high"]
+          "id": "gpt-6.2-astra",
+          "name": "GPT-6.2 Astra",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "low"
         },
         {
-          "id": "gpt-5-mini",
-          "name": "GPT-5 Mini",
-          "reasoningEfforts": ["minimal", "low", "medium", "high"]
+          "id": "gpt-6.2-sol",
+          "name": "GPT-6.2 Sol",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "low"
         },
         {
-          "id": "gpt-5-nano",
-          "name": "GPT-5 Nano",
-          "reasoningEfforts": ["minimal", "low", "medium", "high"]
+          "id": "gpt-6.1-terra",
+          "name": "GPT-6.1 Terra",
+          "reasoningEfforts": ["none", "low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "low"
         },
         {
-          "id": "gpt-5.1",
-          "name": "GPT-5.1",
-          "reasoningEfforts": ["none", "low", "medium", "high"]
+          "id": "gpt-6-luna",
+          "name": "GPT-6 Luna",
+          "reasoningEfforts": ["none", "low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "low"
+        }
+      ]
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "type": "anthropic",
+      "enabled": true,
+      "apiKeyEnv": "ANTHROPIC_API_KEY",
+      "models": [
+        {
+          "id": "claude-opus-5-5",
+          "name": "Claude Opus 5.5",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "medium",
+          "refusalFallback": true
         },
         {
-          "id": "gpt-5.2",
-          "name": "GPT-5.2",
-          "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"]
+          "id": "claude-sonnet-5-5",
+          "name": "Claude Sonnet 5.5",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "medium",
+          "refusalFallback": true
+        },
+        {
+          "id": "claude-haiku-5-5",
+          "name": "Claude Haiku 5.5",
+          "reasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+          "defaultReasoningEffort": "medium"
         }
       ]
     }

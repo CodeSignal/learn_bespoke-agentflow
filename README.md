@@ -12,6 +12,8 @@ Visual editor + runtime for building, executing, and auditing agentic LLM workfl
 
 ## Quick Start
 
+Requires Node.js 20.19 or newer.
+
 1. Install dependencies:
 
 ```bash
@@ -21,8 +23,11 @@ npm install
 2. Configure environment:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
+export OPENAI_API_KEY="sk-..."        # OpenAI models
+export ANTHROPIC_API_KEY="sk-ant-..." # Claude models
 ```
+
+Set the key for each provider you want to use. Providers and models are defined in `.config/config.json` (see [Configuration](./docs/configuration.md)).
 
 3. Start integrated dev server:
 
@@ -40,9 +45,9 @@ npm run dev
 | `npm run dev:web` | Web-only dev server on `5173` (proxying `/api`). |
 | `npm run build` | Build server and web app. |
 | `npm run build:packages` | Build `packages/types` and `packages/workflow-engine`. |
-| `npm run typecheck` | Typecheck server and web workspaces. |
+| `npm run typecheck` | Typecheck every workspace. |
 | `npm run lint` | ESLint across repo TypeScript files. |
-| `npm test` | Current test gate (`workflow-engine` + server typecheck script). |
+| `npm test` | Build shared packages, then run the Vitest suites of the engine, server and web app. |
 
 ## Repository Structure
 

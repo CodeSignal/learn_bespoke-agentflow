@@ -2,7 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AgentFlow</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -26,18 +25,19 @@
   <body>
     <main class="main-layout">
       <div class="content-area" id="canvas-container">
-        <button id="btn-clear" class="button button-danger canvas-clear" type="button">Clear Canvas</button>
+        <button id="btn-clear" class="button button-danger canvas-clear" type="button" aria-describedby="btn-clear-hint">Clear Canvas</button>
+        <span id="btn-clear-hint" class="visually-hidden"></span>
         <div class="palette-floating">
           <h3>Nodes</h3>
-          <div class="node-palette">
-            <div class="draggable-node" draggable="true" data-type="agent">
-              <span class="icon icon-robot icon-primary"></span>Agent
+          <div class="node-palette" role="group" aria-label="Add a node: drag onto the canvas, or press Enter to add at the centre">
+            <div class="draggable-node" draggable="true" data-type="agent" role="button" tabindex="0" aria-label="Add Agent node">
+              <span class="icon icon-robot icon-primary" aria-hidden="true"></span>Agent
             </div>
-            <div class="draggable-node" draggable="true" data-type="if">
-              <span class="icon icon-path icon-primary"></span>Condition
+            <div class="draggable-node" draggable="true" data-type="if" role="button" tabindex="0" aria-label="Add Condition node">
+              <span class="icon icon-path icon-primary" aria-hidden="true"></span>Condition
             </div>
-            <div class="draggable-node" draggable="true" data-type="approval">
-              <span class="icon icon-chermark-badge icon-primary"></span>User Approval
+            <div class="draggable-node" draggable="true" data-type="approval" role="button" tabindex="0" aria-label="Add User Approval node">
+              <span class="icon icon-chermark-badge icon-primary" aria-hidden="true"></span>User Approval
             </div>
           </div>
         </div>
@@ -54,7 +54,7 @@
         </div>
         <div id="canvas-validation-message" class="canvas-validation-message" role="status" aria-live="polite"></div>
         <div id="canvas-stage">
-          <svg id="connections-layer"></svg>
+          <svg id="connections-layer" aria-label="Connections"></svg>
           <div id="nodes-layer"></div>
         </div>
       </div>
@@ -65,7 +65,7 @@
             <h2>Run Console</h2>
             <button id="btn-help" class="button button-text-primary button-small" type="button">Help</button>
           </div>
-          <div id="chat-messages" class="chat-messages">
+          <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-label="Run console messages" tabindex="0">
             <div class="chat-message system">
               System ready. Build your flow, craft a prompt, then run.
             </div>
@@ -79,12 +79,13 @@
             ></textarea>
           </div>
           <div class="run-actions">
-            <button id="btn-run" class="button button-primary run-button" type="button">Run Workflow</button>
+            <button id="btn-run" class="button button-primary run-button" type="button" aria-describedby="btn-run-hint">Run Workflow</button>
+            <span id="btn-run-hint" class="visually-hidden"></span>
             <button
               id="btn-cancel-run"
               class="button button-danger cancel-run-button"
               type="button"
-              aria-label="Cancel run"
+              aria-label="Cancel workflow"
             >
               <span class="icon icon-theme-light-state-open icon-small" aria-hidden="true"></span>
             </button>
