@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppConfig } from '../services/api';
-import { applyModelAliases, buildModelCatalog, buildModelPickerItems } from './model-catalog';
+import { applyModelAliases, buildModelCatalog, buildModelPickerItems, flattenGroupedItems } from './model-catalog';
 import type { EditorNode } from './types';
 
 const config: AppConfig = {
@@ -72,12 +72,21 @@ describe('buildModelPickerItems', () => {
   const labels = { 'gpt-a': 'GPT A', 'gpt-b': 'GPT B', 'claude-a': 'Claude A' };
   const providers = { 'gpt-a': 'OpenAI', 'gpt-b': 'OpenAI', 'claude-a': 'Anthropic' };
 
-  it('names the provider on every item when more than one provider is offered', () => {
+  it('sets the provider as the group on every item when more than one provider is offered', () => {
     expect(buildModelPickerItems(['gpt-a', 'gpt-b', 'claude-a'], labels, providers)).toEqual([
-      { value: 'gpt-a', label: 'OpenAI · GPT A', group: 'OpenAI' },
-      { value: 'gpt-b', label: 'OpenAI · GPT B', group: 'OpenAI' },
-      { value: 'claude-a', label: 'Anthropic · Claude A', group: 'Anthropic' }
+      { value: 'gpt-a', label: 'GPT A', group: 'OpenAI' },
+      { value: 'gpt-b', label: 'GPT B', group: 'OpenAI' },
+      { value: 'claude-a', label: 'Claude A', group: 'Anthropic' }
     ]);
+  });
+
+  it('can fall back to provider-prefixed labels for a dropdown without group support', () => {
+    const items = buildModelPickerItems(['gpt-a', 'claude-a'], labels, providers);
+    expect(flattenGroupedItems(items)).toEqual([
+      { value: 'gpt-a', label: 'OpenAI · GPT A' },
+      { value: 'claude-a', label: 'Anthropic · Claude A' }
+    ]);
+    expect(flattenGroupedItems([{ value: 'x', label: 'X' }])).toEqual([{ value: 'x', label: 'X' }]);
   });
 
   it('leaves labels plain with a single provider or unknown providers', () => {

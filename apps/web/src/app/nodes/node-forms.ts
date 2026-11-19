@@ -1,11 +1,11 @@
-import { buildModelPickerItems } from '../model-catalog';
+import { buildModelPickerItems, flattenGroupedItems } from '../model-catalog';
 import {
     DEFAULT_IF_CONDITION,
     IF_CONDITION_OPERATORS,
     PREVIOUS_OUTPUT_TEMPLATE,
     TOOLS_CONFIG
 } from '../constants';
-import { getDropdownCtor } from '../ds-loader';
+import { dropdownSupportsGroups, getDropdownCtor } from '../ds-loader';
 import type { DropdownInstance, DropdownItem } from '../ds-loader';
 import type { EditorHost } from '../editor-host';
 import { getIfConditions, normalizeIfCondition, removeIfCondition } from '../graph/if-conditions';
@@ -63,9 +63,10 @@ export class NodeForms {
             const DropdownCtor = await getDropdownCtor();
             // The form may have been rebuilt or discarded while the component loaded.
             if (!record || this.records.get(form) !== record) return;
+            const hasGroups = items.some((item) => item.group);
             record.dropdowns.push(new DropdownCtor(container, {
                 placeholder,
-                items,
+                items: hasGroups && !dropdownSupportsGroups(DropdownCtor) ? flattenGroupedItems(items) : items,
                 selectedValue,
                 width: '100%',
                 onSelect

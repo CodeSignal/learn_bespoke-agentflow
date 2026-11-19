@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
+import { dropdownSupportsGroups } from './ds-loader';
 import type { DropdownCtor, ModalCtor, SplitPanelCtor } from './ds-loader';
+import { flattenGroupedItems } from './model-catalog';
 
 /**
  * Contract tests against the real design-system submodule: they construct each
@@ -48,6 +50,38 @@ describe('design-system components used by the editor', () => {
         }
         added.mockRestore();
         removed.mockRestore();
+    });
+
+    it('dropdown: grouped model items render with headings, or with prefixed labels before group support', async () => {
+        const Dropdown = await component<DropdownCtor>('dropdown/dropdown.js');
+        const grouped = [
+            { value: 'gpt-a', label: 'GPT A', group: 'OpenAI' },
+            { value: 'claude-a', label: 'Claude A', group: 'Anthropic' }
+        ];
+        const supportsGroups = dropdownSupportsGroups(Dropdown);
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+
+        const dropdown = new Dropdown(container, {
+            placeholder: 'Select model',
+            items: supportsGroups ? grouped : flattenGroupedItems(grouped),
+            selectedValue: 'claude-a',
+            width: '100%',
+            onSelect: () => {}
+        });
+
+        const optionLabels = Array.from(container.querySelectorAll('[role="option"]')).map((o) => o.textContent?.trim());
+        const headings = Array.from(container.querySelectorAll('[role="group"]')).map((group) =>
+            document.getElementById(group.getAttribute('aria-labelledby') ?? '')?.textContent
+        );
+        if (supportsGroups) {
+            expect(headings).toEqual(['OpenAI', 'Anthropic']);
+            expect(optionLabels).toEqual(['GPT A', 'Claude A']);
+        } else {
+            expect(headings).toEqual([]);
+            expect(optionLabels).toEqual(['OpenAI · GPT A', 'Anthropic · Claude A']);
+        }
+        dropdown.destroy?.();
     });
 
     it('modal: opens, runs footer button handlers and closes', async () => {

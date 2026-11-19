@@ -3,7 +3,7 @@ import type { ConfirmOptions } from './types';
 export type DropdownItem = {
     value: string;
     label: string;
-    /** Group heading for the item. Ignored by design-system versions without group support. */
+    /** Group heading for the item. Needs a design-system dropdown with group support. */
     group?: string;
 };
 
@@ -20,6 +20,11 @@ export type DropdownInstance = {
 };
 
 export type DropdownCtor = new (container: HTMLElement, config: DropdownConfig) => DropdownInstance;
+
+/** Whether this design-system dropdown renders `group` headings (added after the pinned 2026-10 version). */
+export function dropdownSupportsGroups(ctor: DropdownCtor): boolean {
+    return typeof (ctor.prototype as { createGroup?: unknown }).createGroup === 'function';
+}
 
 export type SplitPanelInstance = {
     getLeftPanel: () => HTMLElement;
