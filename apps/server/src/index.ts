@@ -1,73 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import express, { type Request, type Response } from 'express';
-import cors from 'cors';
-import type { WorkflowRunRecord } from '@agentic/types';
-import WorkflowEngine, { type WorkflowLLM } from '@agentic/workflow-engine';
-import { config } from './config';
-import { logger } from './logger';
-import { createWorkflowRouter } from './routes/workflows';
-import { OpenAIAgentsLLMService } from './services/openai-agents-llm';
-import { addWorkflow } from './store/active-workflows';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import type { WorkflowLLM } from '@agentic/workflow-engine';
+import { createApp } from './app.js';
+import { config } from './config.js';
+import { logger } from './logger.js';
+import { OpenAIAgentsLLMService } from './services/openai-agents-llm.js';
+import { restorePausedRuns } from './services/restore.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const webRoot = path.resolve(__dirname, '../../web');
+const webRoot = path.resolve(import.meta.dirname, '../../web');
 const webDist = path.join(webRoot, 'dist');
 
-/**
- * On startup, scan the runs directory for persisted paused runs and re-hydrate
- * each one back into the active-workflows Map so that `POST /api/resume` works
- * even after a server restart.
- */
-function restorePausedRuns(runsDir: string, llm?: WorkflowLLM): void {
-  let files: string[];
-  try {
-    files = fs.readdirSync(runsDir).filter((f) => f.startsWith('run_') && f.endsWith('.json'));
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== 'ENOENT') {
-      logger.warn('Failed to scan runs directory %s: %s', runsDir, String(err));
-    }
-    return;
-  }
-
-  for (const file of files) {
-    try {
-      const record = JSON.parse(
-        fs.readFileSync(path.join(runsDir, file), 'utf-8')
-      ) as WorkflowRunRecord;
-
-      if (
-        record.status === 'paused' &&
-        record.waitingForInput === true &&
-        record.state !== undefined &&
-        record.currentNodeId != null
-      ) {
-        const engine = new WorkflowEngine(record.workflow, {
-          runId: record.runId,
-          llm,
-          initialState: {
-            state: record.state,
-            currentNodeId: record.currentNodeId,
-            status: 'paused',
-            waitingForInput: true,
-            logs: record.logs
-          }
-        });
-        addWorkflow(engine);
-        logger.info('Restored paused run %s from disk', record.runId);
-      }
-    } catch (err) {
-      logger.warn('Skipped unreadable run file %s: %s', file, String(err));
-    }
-  }
-}
-
 async function bootstrap() {
-  const app = express();
-  app.use(cors());
-  app.use(express.json({ limit: '1mb' }));
-
   let llmService: WorkflowLLM | undefined;
   if (config.openAiApiKey) {
     logger.info('OPENAI_API_KEY detected, enabling live OpenAI Agents SDK backend');
@@ -76,21 +21,33 @@ async function bootstrap() {
     logger.warn('OPENAI_API_KEY missing. Agent workflows will be rejected.');
   }
 
-  restorePausedRuns(config.runsDir, llmService);
+  await fs.promises.mkdir(config.runsDir, { recursive: true });
 
-  app.use('/api', createWorkflowRouter(llmService));
+  const { app, store } = createApp({
+    llm: llmService,
+    runsDir: config.runsDir,
+    projectRoot: config.projectRoot,
+    maxSteps: config.maxSteps
+  });
+
+  await restorePausedRuns({
+    runsDir: config.runsDir,
+    store,
+    llm: llmService,
+    maxSteps: config.maxSteps,
+    pausedRunTtlMs: config.pausedRunTtlMs
+  });
 
   if (isProduction) {
     if (fs.existsSync(webDist)) {
       app.use(express.static(webDist));
-      app.get('*', (_req: Request, res: Response) => {
+      app.get('/{*path}', (_req: Request, res: Response) => {
         res.sendFile(path.join(webDist, 'index.html'));
       });
     } else {
       logger.warn('Built web assets missing. Run `npm run build:web` before starting in production.');
     }
   } else {
-    const fsPromises = fs.promises;
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       root: webRoot,
@@ -99,7 +56,7 @@ async function bootstrap() {
       appType: 'custom'
     });
     app.use(vite.middlewares);
-    app.use('*', async (req: Request, res: Response, next) => {
+    app.use(async (req: Request, res: Response, next: NextFunction) => {
       const isHtmlRequest =
         req.method === 'GET' &&
         !req.originalUrl.startsWith('/api') &&
@@ -112,11 +69,10 @@ async function bootstrap() {
       }
 
       try {
-        const url = req.originalUrl;
         const templatePath = path.join(webRoot, 'index.html');
-        let template = await fsPromises.readFile(templatePath, 'utf-8');
-        template = await vite.transformIndexHtml(url, template);
-        res.status(200).set({ 'Content-Type': 'text/html' }).end(template);
+        const template = await fs.promises.readFile(templatePath, 'utf-8');
+        const html = await vite.transformIndexHtml(req.originalUrl, template);
+        res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
       } catch (error) {
         vite.ssrFixStacktrace(error as Error);
         next(error);

@@ -6,6 +6,8 @@ import type {
   AgentToolsConfig,
   WorkflowLLM
 } from '@agentic/workflow-engine';
+import { Agent, Runner, webSearchTool } from '@openai/agents';
+import type { AgentConfiguration, ModelSettings, RunConfig, Tool } from '@openai/agents';
 
 type ToolCallDetails = {
   toolCall?: {
@@ -14,79 +16,8 @@ type ToolCallDetails = {
   };
 };
 
-type AgentsSdkTool = {
-  name?: unknown;
-};
-
-type AgentsSdkAgent = {
-  asTool: (options: {
-    toolName?: string;
-    toolDescription?: string;
-    runOptions?: { maxTurns?: number };
-  }) => AgentsSdkTool;
-  on(
-    event: 'agent_start',
-    listener: (context: unknown, agent: AgentsSdkAgent) => void
-  ): void;
-  on(
-    event: 'agent_end',
-    listener: (context: unknown, output: string) => void
-  ): void;
-  on(
-    event: 'agent_tool_start',
-    listener: (context: unknown, tool: AgentsSdkTool, details: ToolCallDetails) => void
-  ): void;
-  on(
-    event: 'agent_tool_end',
-    listener: (
-      context: unknown,
-      tool: AgentsSdkTool,
-      result: string,
-      details: ToolCallDetails
-    ) => void
-  ): void;
-};
-
-type AgentsSdkRunner = {
-  on(
-    event: 'agent_start',
-    listener: (context: unknown, agent: AgentsSdkAgent) => void
-  ): void;
-  on(
-    event: 'agent_end',
-    listener: (context: unknown, agent: AgentsSdkAgent, output: string) => void
-  ): void;
-  on(
-    event: 'agent_tool_start',
-    listener: (
-      context: unknown,
-      agent: AgentsSdkAgent,
-      tool: AgentsSdkTool,
-      details: ToolCallDetails
-    ) => void
-  ): void;
-  on(
-    event: 'agent_tool_end',
-    listener: (
-      context: unknown,
-      agent: AgentsSdkAgent,
-      tool: AgentsSdkTool,
-      result: string,
-      details: ToolCallDetails
-    ) => void
-  ): void;
-  run: (
-    agent: AgentsSdkAgent,
-    input: string,
-    options?: { maxTurns?: number }
-  ) => Promise<{ finalOutput?: unknown }>;
-};
-
-type AgentsSdkModule = {
-  Agent: new (config: Record<string, unknown>) => AgentsSdkAgent;
-  Runner: new () => AgentsSdkRunner;
-  webSearchTool: () => AgentsSdkTool;
-};
+type SdkAgent = Agent<unknown, 'text'>;
+type SdkTool = Tool<unknown>;
 
 type AgentNodeMeta = {
   nodeId: string;
@@ -106,30 +37,19 @@ type PendingChildCall = {
 };
 
 type AgentBuildRegistry = {
+  /** Applied to the root run and to every nested subagent run. */
+  runConfig: Partial<RunConfig>;
+  signal: AbortSignal | undefined;
   toolRegistry: Map<string, AgentNodeMeta>;
   agentRegistry: WeakMap<object, AgentNodeMeta>;
-  agentsByNodeId: Map<string, AgentsSdkAgent>;
+  agentsByNodeId: Map<string, SdkAgent>;
 };
 
-let sdkModulePromise: Promise<AgentsSdkModule> | null = null;
 const MAX_AGENT_TURNS = 20;
 const MAX_SUBAGENT_PROMPT_CHARS_IN_DESCRIPTION = 280;
 const MAX_NESTED_SUBAGENT_NAMES_IN_DESCRIPTION = 4;
 
-async function loadAgentsSdk(): Promise<AgentsSdkModule> {
-  if (!sdkModulePromise) {
-    sdkModulePromise = (new Function('moduleName', 'return import(moduleName);') as (
-      moduleName: string
-    ) => Promise<AgentsSdkModule>)('@openai/agents').catch((error: unknown) => {
-      sdkModulePromise = null;
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `OpenAI Agents SDK is required but '@openai/agents' is unavailable: ${message}`
-      );
-    });
-  }
-  return sdkModulePromise;
-}
+type ReasoningEffort = NonNullable<NonNullable<ModelSettings['reasoning']>['effort']>;
 
 function isObject(value: unknown): value is object {
   return typeof value === 'object' && value !== null;
@@ -157,8 +77,9 @@ function getAgentName(invocation: AgentInvocation | AgentSubagentInvocation): st
   return 'Workflow Agent';
 }
 
-function getToolName(tool: AgentsSdkTool): string | null {
-  return typeof tool.name === 'string' && tool.name.trim() ? tool.name : null;
+function getToolName(tool: SdkTool): string | null {
+  const name = (tool as { name?: unknown }).name;
+  return typeof name === 'string' && name.trim() ? name : null;
 }
 
 function getToolCallId(details: ToolCallDetails): string | null {
@@ -229,21 +150,20 @@ function buildSubagentToolDescription(
 
 function buildSdkAgent(
   invocation: AgentInvocation | AgentSubagentInvocation,
-  sdk: AgentsSdkModule,
   nodeId: string,
   registry: AgentBuildRegistry,
   ancestry: Set<string> = new Set<string>()
-): AgentsSdkAgent {
+): SdkAgent {
   if (ancestry.has(nodeId)) {
     throw new Error(`Subagent cycle detected while building SDK agent tree at "${nodeId}".`);
   }
 
   const nextAncestry = new Set(ancestry);
   nextAncestry.add(nodeId);
-  const tools = buildAgentTools(invocation, sdk, registry, nodeId, nextAncestry);
+  const tools = buildAgentTools(invocation, registry, nodeId, nextAncestry);
   const agentName = getAgentName(invocation);
 
-  const agentConfig: Record<string, unknown> = {
+  const agentConfig: Partial<AgentConfiguration<unknown, 'text'>> & { name: string } = {
     name: agentName,
     instructions: invocation.systemPrompt,
     model: invocation.model
@@ -255,13 +175,13 @@ function buildSdkAgent(
 
   if (invocation.reasoningEffort) {
     agentConfig.modelSettings = {
-      reasoning: {
-        effort: invocation.reasoningEffort
-      }
+      // The effort comes from `.config/config.json`; the API rejects values
+      // the chosen model does not support.
+      reasoning: { effort: invocation.reasoningEffort as ReasoningEffort }
     };
   }
 
-  const agent = new sdk.Agent(agentConfig);
+  const agent: SdkAgent = new Agent(agentConfig);
   registry.agentRegistry.set(agent as object, { nodeId, agentName });
   registry.agentsByNodeId.set(nodeId, agent);
   return agent;
@@ -269,20 +189,19 @@ function buildSdkAgent(
 
 function buildAgentTools(
   invocation: AgentInvocation | AgentSubagentInvocation,
-  sdk: AgentsSdkModule,
   registry: AgentBuildRegistry,
   parentNodeId: string,
   ancestry: Set<string>
-): AgentsSdkTool[] {
-  const tools: AgentsSdkTool[] = [];
+): SdkTool[] {
+  const tools: SdkTool[] = [];
 
   if (invocation.tools?.web_search) {
-    tools.push(sdk.webSearchTool());
+    tools.push(webSearchTool());
   }
 
   const subagents = invocation.subagents ?? [];
   for (const subagent of subagents) {
-    const childAgent = buildSdkAgent(subagent, sdk, subagent.nodeId, registry, ancestry);
+    const childAgent = buildSdkAgent(subagent, subagent.nodeId, registry, ancestry);
     const childAgentName = (subagent.agentName || 'Agent').trim() || 'Agent';
     const toolName = toToolName(childAgentName, subagent.nodeId);
     registry.toolRegistry.set(toolName, {
@@ -295,7 +214,8 @@ function buildAgentTools(
       childAgent.asTool({
         toolName,
         toolDescription: buildSubagentToolDescription(childAgentName, subagent),
-        runOptions: { maxTurns: MAX_AGENT_TURNS }
+        runConfig: registry.runConfig,
+        runOptions: { maxTurns: MAX_AGENT_TURNS, signal: registry.signal }
       })
     );
   }
@@ -321,21 +241,29 @@ function emitRuntimeEvent(
 }
 
 export class OpenAIAgentsLLMService implements WorkflowLLM {
+  /**
+   * @param runConfig Optional SDK run configuration, for example a custom
+   * `modelProvider`. Defaults to the SDK's OpenAI provider.
+   */
+  constructor(private readonly runConfig: Partial<RunConfig> = {}) {}
+
   async respond(
     invocation: AgentInvocation,
     options?: AgentRespondOptions
   ): Promise<string> {
-    const sdk = await loadAgentsSdk();
+    const signal = options?.signal;
     const rootNodeId = options?.parentNodeId || '__root__';
 
     const registry: AgentBuildRegistry = {
+      runConfig: this.runConfig,
+      signal,
       toolRegistry: new Map<string, AgentNodeMeta>(),
       agentRegistry: new WeakMap<object, AgentNodeMeta>(),
-      agentsByNodeId: new Map<string, AgentsSdkAgent>()
+      agentsByNodeId: new Map<string, SdkAgent>()
     };
 
-    const agent = buildSdkAgent(invocation, sdk, rootNodeId, registry);
-    const runner = new sdk.Runner();
+    const agent = buildSdkAgent(invocation, rootNodeId, registry);
+    const runner = new Runner(this.runConfig);
 
     const pendingChildCallsByNodeId = new Map<string, PendingChildCall[]>();
     const contextStateByContext = new WeakMap<object, AgentContextState>();
@@ -402,7 +330,7 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
     const handleAgentToolStart = (
       sourceNodeId: string,
       context: unknown,
-      tool: AgentsSdkTool,
+      tool: SdkTool,
       details: ToolCallDetails
     ): void => {
       const toolName = getToolName(tool);
@@ -453,7 +381,7 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
       pendingChildCallsByNodeId.set(subagentMeta.nodeId, pendingQueue);
     };
 
-    const handleAgentToolEnd = (tool: AgentsSdkTool, details: ToolCallDetails): void => {
+    const handleAgentToolEnd = (tool: SdkTool, details: ToolCallDetails): void => {
       const toolName = getToolName(tool);
       if (!toolName) return;
 
@@ -506,7 +434,8 @@ export class OpenAIAgentsLLMService implements WorkflowLLM {
 
     try {
       const result = await runner.run(agent, invocation.userContent, {
-        maxTurns: MAX_AGENT_TURNS
+        maxTurns: MAX_AGENT_TURNS,
+        signal
       });
       return toTextOutput(result.finalOutput);
     } catch (error) {

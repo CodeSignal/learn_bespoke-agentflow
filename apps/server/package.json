@@ -4,22 +4,26 @@
   "private": true,
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch --ignore ../web --ignore ../../apps/web --ignore ../../data src/index.ts",
+    "dev": "tsx watch --ignore ../web --ignore ../../data src/index.ts",
     "build": "tsc -b tsconfig.json",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "start": "NODE_ENV=production node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "npm run typecheck"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@openai/agents": "^0.1.0",
     "@agentic/types": "file:../../packages/types",
     "@agentic/workflow-engine": "file:../../packages/workflow-engine",
-    "cors": "^2.8.5",
-    "express": "^4.19.2"
+    "@openai/agents": "^0.22.0",
+    "express": "^5.3.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^4.17.21"
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.6"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20.19"
   }
 }
