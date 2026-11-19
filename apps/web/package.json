@@ -1,5 +1,5 @@
 {
-  "name": "@agentic/web",
+  "name": "@agentflow/web",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@agentic/types": "file:../../packages/types"
+    "@agentflow/types": "file:../../packages/types"
   },
   "devDependencies": {
     "@types/node": "^26.6.6",

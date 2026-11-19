@@ -1,4 +1,4 @@
-import type { WorkflowEngine } from '@agentic/workflow-engine';
+import type { WorkflowEngine } from '@agentflow/workflow-engine';
 
 /** In-memory registry of runs that are executing or paused. */
 export class RunStore {

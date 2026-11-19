@@ -1,5 +1,5 @@
 {
-  "name": "@agentic/workflow-engine",
+  "name": "@agentflow/workflow-engine",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
@@ -15,7 +15,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@agentic/types": "file:../types"
+    "@agentflow/types": "file:../types"
   },
   "type": "module",
   "exports": {

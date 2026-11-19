@@ -1,5 +1,5 @@
-import type { WorkflowLLM } from '@agentic/workflow-engine';
-import { WorkflowEngine } from '@agentic/workflow-engine';
+import type { WorkflowLLM } from '@agentflow/workflow-engine';
+import { WorkflowEngine } from '@agentflow/workflow-engine';
 import { logger } from '../logger.js';
 import type { RunStore } from '../store/run-store.js';
 import { isValidRunId, listRunRecords } from './persistence.js';

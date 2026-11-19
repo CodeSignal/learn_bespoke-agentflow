@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { WorkflowConnection, WorkflowGraph, WorkflowNode } from '@agentic/types';
+import type { WorkflowConnection, WorkflowGraph, WorkflowNode } from '@agentflow/types';
 import { WorkflowEngine } from './index.js';
 import type { AgentInvocation, AgentRespondOptions, WorkflowLLM } from './index.js';
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Model, ModelProvider, ModelRequest, ModelResponse } from '@openai/agents';
 import { Usage } from '@openai/agents';
-import type { AgentRuntimeEvent } from '@agentic/workflow-engine';
+import type { AgentRuntimeEvent } from '@agentflow/workflow-engine';
 import { OpenAIAgentsLLMService } from './openai-agents-llm.js';
 
 type Reply = { text: string } | { tool: string; input: string };

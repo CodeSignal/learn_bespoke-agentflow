@@ -5,7 +5,7 @@ import type {
   AgentSubagentInvocation,
   AgentToolsConfig,
   WorkflowLLM
-} from '@agentic/workflow-engine';
+} from '@agentflow/workflow-engine';
 import { Agent, Runner, webSearchTool } from '@openai/agents';
 import type { AgentConfiguration, ModelSettings, RunConfig, Tool } from '@openai/agents';
 

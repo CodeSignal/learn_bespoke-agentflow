@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import type { WorkflowRunRecord } from '@agentic/types';
+import type { WorkflowRunRecord } from '@agentflow/types';
 
 /** Run ids become file names, so only a conservative character set is accepted. */
 export const RUN_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;

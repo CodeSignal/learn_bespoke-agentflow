@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import type { WorkflowLLM } from '@agentic/workflow-engine';
+import type { WorkflowLLM } from '@agentflow/workflow-engine';
 import { createApp } from './app.js';
 import { config } from './config.js';
 import { logger } from './logger.js';

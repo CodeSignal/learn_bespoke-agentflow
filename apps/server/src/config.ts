@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { DEFAULT_MAX_STEPS } from '@agentic/workflow-engine';
+import { DEFAULT_MAX_STEPS } from '@agentflow/workflow-engine';
 
 const FALLBACK_ROOT = path.resolve(import.meta.dirname, '..', '..', '..');
 const PROJECT_ROOT = process.env.PROJECT_ROOT || FALLBACK_ROOT;

@@ -13,10 +13,10 @@
     "skipLibCheck": true,
     "strict": true,
     "paths": {
-      "@agentic/types": [
+      "@agentflow/types": [
         "./packages/types/src/index.ts"
       ],
-      "@agentic/workflow-engine": [
+      "@agentflow/workflow-engine": [
         "./packages/workflow-engine/src/index.ts"
       ]
     },

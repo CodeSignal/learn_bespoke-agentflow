@@ -1,4 +1,4 @@
-import type { WorkflowGraph } from '@agentic/types';
+import type { WorkflowGraph } from '@agentflow/types';
 
 export const MAX_GRAPH_NODES = 500;
 export const MAX_GRAPH_CONNECTIONS = 2000;

@@ -6,7 +6,7 @@ import type {
   WorkflowNode,
   WorkflowRunResult,
   WorkflowStatus
-} from '@agentic/types';
+} from '@agentflow/types';
 
 export * from './validation.js';
 
@@ -752,7 +752,7 @@ export class WorkflowEngine {
       const state = visitState.get(nodeId);
       if (state === 'visiting') {
         const startIndex = path.indexOf(nodeId);
-        const cyclePath = [...path.slice(startIndex), nodeId].join(' -> ');
+        const cyclePath = path.slice(startIndex).join(' -> ');
         throw new Error(`Subagent cycle detected: ${cyclePath}`);
       }
       if (state === 'visited') {

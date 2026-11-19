@@ -1,5 +1,5 @@
 import express, { type Express } from 'express';
-import type { WorkflowLLM } from '@agentic/workflow-engine';
+import type { WorkflowLLM } from '@agentflow/workflow-engine';
 import { createWorkflowRouter } from './routes/workflows.js';
 import { RunStore } from './store/run-store.js';
 

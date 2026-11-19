@@ -1,5 +1,5 @@
 {
-  "name": "@agentic/types",
+  "name": "@agentflow/types",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",

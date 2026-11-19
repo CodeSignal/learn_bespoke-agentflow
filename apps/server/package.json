@@ -1,5 +1,5 @@
 {
-  "name": "@agentic/server",
+  "name": "@agentflow/server",
   "version": "1.0.0",
   "private": true,
   "main": "dist/index.js",
@@ -12,8 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agentic/types": "file:../../packages/types",
-    "@agentic/workflow-engine": "file:../../packages/workflow-engine",
+    "@agentflow/types": "file:../../packages/types",
+    "@agentflow/workflow-engine": "file:../../packages/workflow-engine",
     "@openai/agents": "^0.22.0",
     "express": "^5.3.0",
     "zod": "^4.6.7"

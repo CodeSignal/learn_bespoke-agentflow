@@ -15,7 +15,7 @@
       "vite/client"
     ],
     "paths": {
-      "@agentic/types": [
+      "@agentflow/types": [
         "../../packages/types/src/index.ts"
       ]
     },
