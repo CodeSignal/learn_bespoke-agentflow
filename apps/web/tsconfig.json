@@ -14,10 +14,9 @@
     "types": [
       "vite/client"
     ],
-    "baseUrl": ".",
     "paths": {
-      "@agentic/types": [
-        "../../packages/types/src"
+      "@agentflow/types": [
+        "../../packages/types/src/index.ts"
       ]
     },
     "declaration": false,
@@ -32,4 +31,3 @@
     }
   ]
 }
-

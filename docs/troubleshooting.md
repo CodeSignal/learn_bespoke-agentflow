@@ -1,13 +1,25 @@
 # Troubleshooting
 
-## `OPENAI_API_KEY is required to run workflows with Agent nodes`
+## `<KEY> is required to run Agent nodes that use <Provider> models`
 
-Cause: Server started without `OPENAI_API_KEY`.
+Cause: the workflow uses a model whose provider has no API key in the server's environment.
 
 Fix:
 
-1. Export key in shell.
+1. Export the named variable (for example `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`) in the shell.
 2. Restart `npm run dev`.
+
+## `Model "..." is not listed by any enabled provider`
+
+Cause: an Agent node uses a model id that is not in `.config/config.json`, usually from an older saved workflow.
+
+Fix: pick a current model on the node, or add the old id to `modelAliases` in `.config/config.json`.
+
+## A provider's models are missing from the editor
+
+Cause: the provider is disabled or its API key is not set. Models of providers without a key are hidden while at least one other provider has a key.
+
+Fix: set the key named by the provider's `apiKeyEnv` and reload the page.
 
 ## Run button disabled unexpectedly
 
@@ -36,9 +48,9 @@ Fix:
 
 ## Resume returns `409` conflict
 
-Cause: same run is being resumed concurrently (`/api/resume` and `/api/resume-stream` lock conflict).
+Cause: the run is still executing (its run or a previous resume request has not finished).
 
-Fix: resume from only one `/api` client path at a time.
+Fix: wait for the run to pause before resuming, and resume from one client at a time.
 
 ## `default-workflow.json` not loading
 
@@ -76,6 +88,18 @@ npm run build
 
 ## `GET /api/run/:runId` returns `400 Invalid runId`
 
-Cause: route only accepts numeric `runId` to prevent path traversal.
+Cause: run ids may only contain letters, digits, `-` and `_` (at most 64 characters), to prevent path traversal.
 
-Fix: pass raw numeric run ID (timestamp string), no prefixes or suffixes.
+Fix: pass the `runId` exactly as the API returned it.
+
+## Run fails with `Workflow stopped after N steps`
+
+Cause: the workflow contains a loop whose exit condition never matched within the step limit.
+
+Fix: check the Condition node on the loop, or raise `WORKFLOW_MAX_STEPS` if the loop legitimately needs more iterations.
+
+## A paused run is gone after a restart
+
+Cause: paused runs older than `PAUSED_RUN_TTL_HOURS` (default 24) are not restored.
+
+Fix: re-run the workflow, or raise the limit.

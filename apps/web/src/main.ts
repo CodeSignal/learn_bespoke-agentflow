@@ -1,5 +1,6 @@
 import './workflow-editor.css';
 
+import { getModalCtor } from './app/ds-loader';
 import WorkflowEditor from './app/workflow-editor';
 import { helpContent } from './data/help-content';
 
@@ -14,11 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const helpTrigger = document.getElementById('btn-help');
   if (!helpTrigger) return;
 
-  const origin = window.location.origin;
-  const modalModulePath = `${origin}/design-system/components/modal/modal.js`;
-
-  import(/* @vite-ignore */ modalModulePath)
-    .then(({ default: Modal }) => {
+  getModalCtor()
+    .then((Modal) => {
       const helpModal = Modal.createHelpModal({
         title: 'Help / User Guide',
         content: helpContent

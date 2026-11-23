@@ -8,6 +8,7 @@ This project is an npm workspace monorepo for building, running, and reviewing a
 - `apps/web`: Vite SPA workflow editor and run console.
 - `packages/types`: Shared TypeScript contracts used by server, web, and engine.
 - `packages/workflow-engine`: Pure workflow runtime with pluggable LLM adapter.
+- `apps/server/src/llm`: provider configuration, the provider router, and one adapter per provider type.
 - `design-system/`: Git submodule for UI tokens and components.
 - `data/runs/`: Persisted run records (`run_<runId>.json`).
 - `.config/config.json`: Provider/model config served by API.
@@ -30,7 +31,15 @@ This project is an npm workspace monorepo for building, running, and reviewing a
 3. Server streams log events and final result.
 4. Server persists updated run record.
 
-A per-run resume lock prevents concurrent resume calls (`409` if duplicated).
+A per-run execution lock prevents a run from being resumed while it is still executing (`409`).
+
+## Cancel
+
+1. Web app calls `POST /api/cancel` with `runId`.
+2. Engine marks the run `cancelled` and aborts in-flight model calls through an `AbortSignal`.
+3. The request that drives the run (if any) persists the record and ends its stream; a paused run is persisted by the cancel request itself.
+
+Closing a stream is not a cancel: reload recovery depends on the run continuing.
 
 ## Batch paths
 
@@ -46,6 +55,19 @@ The workflow engine supports:
 - Approval pause/resume semantics with `waitingForInput` and `currentNodeId`.
 - Subagent tool-delegation edges (`sourceHandle: "subagent"`) separate from execution edges.
 - Deferred downstream execution queues when a pause occurs mid-branch.
+- A step limit per run/resume call (`maxSteps`, default 100) that stops loops which never reach their exit condition.
+- Cancellation, and aborting sibling branches as soon as one branch fails.
+
+## Providers and Models
+
+`.config/config.json` lists providers and their models. `ProviderRouterLLM` implements the engine's `WorkflowLLM` and sends each agent run to the adapter of the provider that lists its model:
+
+- `OpenAIAdapter`: OpenAI and OpenAI-compatible services, through the OpenAI Agents SDK.
+- `AnthropicAdapter`: Claude models, through the Anthropic SDK's tool runner.
+
+Subagents are function tools owned by the router. When a parent model calls one, the router runs the subagent as its own agent run on whatever provider its model belongs to, and logs the `subagent_call_*` events. Web Search maps to each provider's hosted search tool.
+
+Before a run starts, the server checks that every Agent node names a configured model whose provider has an API key.
 
 ## Subagent Model
 
@@ -71,6 +93,7 @@ At startup, server scans `data/runs/` and rehydrates paused runs into memory whe
 - `waitingForInput === true`
 - `state` exists
 - `currentNodeId` is not null
+- the record was written less than `PAUSED_RUN_TTL_HOURS` ago
 
 This enables resume endpoints to keep working after restart.
 
@@ -93,3 +116,9 @@ Build/type dependencies flow from shared packages to apps:
 3. `apps/server` and `apps/web`
 
 Use `npm run build:packages` before server/app typecheck or build when running targeted commands.
+
+All workspaces are ES modules. The server and packages compile with `module: NodeNext`, so relative imports carry a `.js` extension.
+
+## Security Model
+
+The server has no authentication and is meant to run on a developer or learner machine, serving its own UI. It sends no CORS headers, so pages on other origins cannot start runs with the configured API key. Run and default-workflow graphs are validated structurally (`validateWorkflowGraph`) before use.

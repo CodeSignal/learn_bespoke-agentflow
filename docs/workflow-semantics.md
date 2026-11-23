@@ -19,7 +19,7 @@ This document describes what each node and connection means at runtime.
   - `model`
   - `reasoningEffort`
   - `tools` (`web_search`, `subagents`)
-- `{{PREVIOUS_OUTPUT}}` is replaced with prior node output.
+- `{{PREVIOUS_OUTPUT}}` is replaced with prior node output, inserted literally (characters such as `$` have no special meaning).
 - If `userPrompt` is empty, engine falls back to previous output text.
 
 ## `if`
@@ -79,6 +79,9 @@ Invalid subagent structures are rejected by both UI preflight and runtime valida
 ## Execution and Branching Behavior
 
 - Multiple outgoing execution branches run concurrently (`Promise.all`).
+- If one branch fails, the run fails and model calls still in flight on sibling branches are aborted.
+- Execution loops are allowed. Each run or resume call may execute at most `maxSteps` nodes (default 100, `WORKFLOW_MAX_STEPS` on the server); beyond that the run fails with an `error` log entry.
+- A run can be cancelled while running or paused; it ends with `status = cancelled` and a `cancelled` system log entry.
 - If execution pauses while other branches remain, downstream nodes are queued and resumed later.
 - After resume, engine drains deferred queue while status remains `running`.
 
@@ -94,6 +97,7 @@ Typical log types include:
 - `llm_response`
 - `llm_error`
 - `error`
+- `cancelled`
 
 Subagent runtime events are logged as JSON payloads in `content` with types:
 

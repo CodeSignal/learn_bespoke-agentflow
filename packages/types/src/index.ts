@@ -1,4 +1,10 @@
-export type NodeType = 'start' | 'agent' | 'if' | 'approval' | string;
+export type KnownNodeType = 'start' | 'agent' | 'if' | 'approval';
+
+/**
+ * Known node types plus an open string so graphs saved by older versions
+ * (for example the legacy `input` node) still type-check when loaded.
+ */
+export type NodeType = KnownNodeType | (string & {});
 
 export interface BaseNodeData {
   collapsed?: boolean;
@@ -25,7 +31,13 @@ export interface WorkflowGraph {
   connections: WorkflowConnection[];
 }
 
-export type WorkflowStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed';
+export type WorkflowStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 export interface WorkflowLogEntry {
   timestamp: string;
@@ -59,5 +71,3 @@ export interface ApprovalInput {
   decision: 'approve' | 'reject';
   note?: string;
 }
-
-export interface WorkflowEngineResult extends WorkflowRunResult {}

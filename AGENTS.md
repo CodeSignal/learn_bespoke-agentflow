@@ -10,7 +10,8 @@ This repository is an npm workspace monorepo:
 - `packages/workflow-engine`: Reusable workflow runtime.
 - `design-system/`: Git submodule with UI tokens/components.
 - `data/runs/`: Runtime run snapshots (gitignored).
-- `.config/config.json`: Provider/model definitions (committed).
+- `.config/config.json`: Provider/model definitions (committed); schema in `docs/configuration.md`.
+- `apps/server/src/llm`: provider router and adapters (OpenAI Agents SDK, Anthropic SDK).
 - `.config/default-workflow.json`: Optional startup workflow (gitignored).
 
 Server routes:
@@ -19,6 +20,7 @@ Server routes:
 - `POST /api/run` (batch JSON run)
 - `POST /api/resume-stream` (SSE resume, primary)
 - `POST /api/resume` (batch JSON resume)
+- `POST /api/cancel` (stop a running or paused run)
 - `GET /api/run/:runId` (active/persisted run fetch)
 - `GET /api/config` (provider/model config)
 - `GET /api/default-workflow` (optional startup workflow)
@@ -31,8 +33,8 @@ Server routes:
 - `npm run build`: Build server and web app.
 - `npm run build:packages`: Build shared packages.
 - `npm run lint`: Run ESLint.
-- `npm run typecheck`: Typecheck server and web workspaces.
-- `npm test`: Run repo test gate (`workflow-engine` + server typecheck scripts).
+- `npm run typecheck`: Typecheck every workspace.
+- `npm test`: Build shared packages, then run Vitest in the engine, server and web workspaces.
 
 ## Coding Style & Naming Conventions
 
@@ -44,8 +46,9 @@ Server routes:
 
 ## Testing Guidelines
 
-- CI checks in `.github/workflows/pr.yml`: `lint`, `build:packages`, `typecheck`, `build`.
-- Web workspace uses Vitest (`npm --workspace apps/web run test`).
+- CI checks in `.github/workflows/pr.yml`: `lint`, `build:packages`, `typecheck`, `test`, `build`.
+- Every workspace with logic uses Vitest (`npm --workspace <path> run test`). The engine and server suites use a stub LLM; the server's SDK suite runs the real Agents SDK against a scripted model, so no API key is needed.
+- Server and package sources are ES modules compiled with `NodeNext`: relative imports need a `.js` extension.
 - Prefer targeted `*.test.ts` files near changed behavior.
 
 ## Commit & Pull Request Guidelines
@@ -58,7 +61,9 @@ Server routes:
 
 ## Security & Configuration Tips
 
-- Set `OPENAI_API_KEY` before running agent workflows.
+- Set the API key of each provider you use (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) before running agent workflows.
+- Providers and models live in `.config/config.json`; keys stay in the environment, named by each provider's `apiKeyEnv`.
+- Do not hard-code model ids in source: add them to `.config/config.json` (and `modelAliases` for retired ids).
 - Never commit secrets, `.env` files, or generated data from `data/runs/`.
 
 ## Design System Policy

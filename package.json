@@ -16,21 +16,21 @@
     "build:packages": "npm --workspace packages/types run build && npm --workspace packages/workflow-engine run build",
     "build:server": "npm run build:packages && npm --workspace apps/server run build",
     "build:web": "npm --workspace apps/web run build",
-    "test": "npm run test:engine && npm run test:server",
-    "test:engine": "npm --workspace packages/workflow-engine run test",
-    "test:server": "npm --workspace apps/server run test",
+    "test": "npm run build:packages && npm run test --workspaces --if-present",
     "clean": "npm run clean --workspaces",
     "lint": "eslint .",
-    "typecheck": "npm run typecheck:server && npm run typecheck:web",
-    "typecheck:server": "npm --workspace apps/server run typecheck",
-    "typecheck:web": "npm --workspace apps/web run typecheck"
+    "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.14.0",
-    "@typescript-eslint/parser": "^8.14.0",
-    "concurrently": "^9.1.0",
-    "eslint": "^9.14.0",
-    "typescript": "^5.6.3",
-    "tsx": "^4.19.2"
+    "@types/node": "^26.6.6",
+    "@typescript-eslint/eslint-plugin": "^8.73.0",
+    "@typescript-eslint/parser": "^8.73.0",
+    "eslint": "^10.15.0",
+    "tsx": "^4.23.15",
+    "typescript": "^6.0.3",
+    "vitest": "^5.1.1"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }

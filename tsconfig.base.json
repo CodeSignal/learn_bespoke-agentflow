@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "lib": [
-      "ES2020",
-      "DOM"
+      "ES2022"
     ],
     "allowJs": false,
     "esModuleInterop": true,
@@ -13,15 +12,17 @@
     "resolveJsonModule": true,
     "skipLibCheck": true,
     "strict": true,
-    "baseUrl": ".",
     "paths": {
-      "@agentic/types": [
+      "@agentflow/types": [
         "./packages/types/src/index.ts"
       ],
-      "@agentic/workflow-engine": [
+      "@agentflow/workflow-engine": [
         "./packages/workflow-engine/src/index.ts"
       ]
     },
-    "declarationMap": true
+    "declarationMap": true,
+    "types": [
+      "node"
+    ]
   }
 }
