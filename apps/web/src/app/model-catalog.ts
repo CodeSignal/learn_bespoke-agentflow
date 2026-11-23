@@ -52,38 +52,65 @@ export function buildModelCatalog(config: AppConfig): ModelCatalog | null {
     return catalog;
 }
 
-export interface ModelPickerItem {
+export interface ModelPickerOption {
     value: string;
     label: string;
-    /** Provider name, set only when models from more than one provider are offered. */
-    group?: string;
+}
+
+/** A provider heading with its models, in the design-system dropdown's group shape. */
+export interface ModelPickerGroup {
+    label: string;
+    items: ModelPickerOption[];
+}
+
+export type ModelPickerEntry = ModelPickerOption | ModelPickerGroup;
+
+export function isModelPickerGroup(entry: ModelPickerEntry): entry is ModelPickerGroup {
+    return Array.isArray((entry as ModelPickerGroup).items);
 }
 
 /**
- * Items for the model dropdown, in provider order. With more than one
- * provider, each item names its provider in `group`, which the design-system
- * dropdown renders as a heading.
+ * Entries for the model dropdown, in provider order. With more than one
+ * provider, each provider becomes a group that the design-system dropdown
+ * renders under a heading; with one provider the list stays flat.
  */
 export function buildModelPickerItems(
     options: string[],
     labels: Record<string, string>,
     providers: Record<string, string>
-): ModelPickerItem[] {
+): ModelPickerEntry[] {
+    const toOption = (id: string): ModelPickerOption => ({ value: id, label: labels[id] ?? id });
     const providerNames = new Set(options.map((id) => providers[id]).filter(Boolean));
-    const grouped = providerNames.size > 1;
-    return options.map((id) => {
-        const label = labels[id] ?? id;
+    if (providerNames.size <= 1) return options.map(toOption);
+
+    const entries: ModelPickerEntry[] = [];
+    let current: ModelPickerGroup | null = null;
+    for (const id of options) {
         const provider = providers[id];
-        return grouped && provider ? { value: id, label, group: provider } : { value: id, label };
-    });
+        if (!provider) {
+            current = null;
+            entries.push(toOption(id));
+            continue;
+        }
+        if (!current || current.label !== provider) {
+            current = { label: provider, items: [] };
+            entries.push(current);
+        }
+        current.items.push(toOption(id));
+    }
+    return entries;
 }
 
 /**
- * For a design-system dropdown that cannot render groups: drops `group` and
- * names the provider in the label instead ("OpenAI · GPT-6 Luna").
+ * For a design-system dropdown that cannot render groups: flattens them and
+ * names the provider in each label instead ("OpenAI · GPT-6 Luna").
  */
-export function flattenGroupedItems(items: ModelPickerItem[]): ModelPickerItem[] {
-    return items.map(({ value, label, group }) => ({ value, label: group ? `${group} · ${label}` : label }));
+export function flattenGroupedItems(entries: ModelPickerEntry[]): ModelPickerOption[] {
+    return entries.flatMap((entry) =>
+        isModelPickerGroup(entry)
+            ? entry.items.map(({ value, label }) => ({ value, label: `${entry.label} · ${label}` }))
+            : [entry]
+    );
 }
 
 /**

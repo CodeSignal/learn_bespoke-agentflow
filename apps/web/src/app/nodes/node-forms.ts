@@ -6,6 +6,7 @@ import {
     TOOLS_CONFIG
 } from '../constants';
 import { dropdownSupportsGroups, getDropdownCtor } from '../ds-loader';
+import type { DropdownEntry } from '../ds-loader';
 import type { DropdownInstance, DropdownItem } from '../ds-loader';
 import type { EditorHost } from '../editor-host';
 import { getIfConditions, normalizeIfCondition, removeIfCondition } from '../graph/if-conditions';
@@ -53,7 +54,7 @@ export class NodeForms {
     private async setupDropdown(
         form: HTMLElement,
         container: HTMLElement,
-        items: DropdownItem[],
+        items: DropdownEntry[],
         selectedValue: string,
         placeholder: string,
         onSelect: (value: string) => void
@@ -63,10 +64,9 @@ export class NodeForms {
             const DropdownCtor = await getDropdownCtor();
             // The form may have been rebuilt or discarded while the component loaded.
             if (!record || this.records.get(form) !== record) return;
-            const hasGroups = items.some((item) => item.group);
             record.dropdowns.push(new DropdownCtor(container, {
                 placeholder,
-                items: hasGroups && !dropdownSupportsGroups(DropdownCtor) ? flattenGroupedItems(items) : items,
+                items: dropdownSupportsGroups(DropdownCtor) ? items : flattenGroupedItems(items),
                 selectedValue,
                 width: '100%',
                 onSelect

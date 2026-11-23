@@ -55,8 +55,8 @@ describe('design-system components used by the editor', () => {
     it('dropdown: grouped model items render with headings, or with prefixed labels before group support', async () => {
         const Dropdown = await component<DropdownCtor>('dropdown/dropdown.js');
         const grouped = [
-            { value: 'gpt-a', label: 'GPT A', group: 'OpenAI' },
-            { value: 'claude-a', label: 'Claude A', group: 'Anthropic' }
+            { label: 'OpenAI', items: [{ value: 'gpt-a', label: 'GPT A' }] },
+            { label: 'Anthropic', items: [{ value: 'claude-a', label: 'Claude A' }] }
         ];
         const supportsGroups = dropdownSupportsGroups(Dropdown);
         const container = document.createElement('div');

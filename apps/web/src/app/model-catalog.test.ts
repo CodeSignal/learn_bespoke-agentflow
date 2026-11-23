@@ -72,29 +72,36 @@ describe('buildModelPickerItems', () => {
   const labels = { 'gpt-a': 'GPT A', 'gpt-b': 'GPT B', 'claude-a': 'Claude A' };
   const providers = { 'gpt-a': 'OpenAI', 'gpt-b': 'OpenAI', 'claude-a': 'Anthropic' };
 
-  it('sets the provider as the group on every item when more than one provider is offered', () => {
+  it('nests models under their provider when more than one provider is offered', () => {
     expect(buildModelPickerItems(['gpt-a', 'gpt-b', 'claude-a'], labels, providers)).toEqual([
-      { value: 'gpt-a', label: 'GPT A', group: 'OpenAI' },
-      { value: 'gpt-b', label: 'GPT B', group: 'OpenAI' },
-      { value: 'claude-a', label: 'Claude A', group: 'Anthropic' }
+      { label: 'OpenAI', items: [{ value: 'gpt-a', label: 'GPT A' }, { value: 'gpt-b', label: 'GPT B' }] },
+      { label: 'Anthropic', items: [{ value: 'claude-a', label: 'Claude A' }] }
     ]);
   });
 
-  it('can fall back to provider-prefixed labels for a dropdown without group support', () => {
-    const items = buildModelPickerItems(['gpt-a', 'claude-a'], labels, providers);
-    expect(flattenGroupedItems(items)).toEqual([
-      { value: 'gpt-a', label: 'OpenAI · GPT A' },
-      { value: 'claude-a', label: 'Anthropic · Claude A' }
-    ]);
-    expect(flattenGroupedItems([{ value: 'x', label: 'X' }])).toEqual([{ value: 'x', label: 'X' }]);
-  });
-
-  it('leaves labels plain with a single provider or unknown providers', () => {
+  it('keeps a flat list with a single provider or unknown providers', () => {
     expect(buildModelPickerItems(['gpt-a', 'gpt-b'], labels, providers)).toEqual([
       { value: 'gpt-a', label: 'GPT A' },
       { value: 'gpt-b', label: 'GPT B' }
     ]);
     expect(buildModelPickerItems(['x'], {}, {})).toEqual([{ value: 'x', label: 'x' }]);
+  });
+
+  it('leaves a model without a provider outside the groups', () => {
+    expect(buildModelPickerItems(['gpt-a', 'mystery', 'claude-a'], labels, providers)).toEqual([
+      { label: 'OpenAI', items: [{ value: 'gpt-a', label: 'GPT A' }] },
+      { value: 'mystery', label: 'mystery' },
+      { label: 'Anthropic', items: [{ value: 'claude-a', label: 'Claude A' }] }
+    ]);
+  });
+
+  it('can fall back to provider-prefixed labels for a dropdown without group support', () => {
+    const entries = buildModelPickerItems(['gpt-a', 'claude-a'], labels, providers);
+    expect(flattenGroupedItems(entries)).toEqual([
+      { value: 'gpt-a', label: 'OpenAI · GPT A' },
+      { value: 'claude-a', label: 'Anthropic · Claude A' }
+    ]);
+    expect(flattenGroupedItems([{ value: 'x', label: 'X' }])).toEqual([{ value: 'x', label: 'X' }]);
   });
 });
 
